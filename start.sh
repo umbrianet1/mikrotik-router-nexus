@@ -13,13 +13,13 @@ echo "================================================"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source utilities
-source "$SCRIPT_DIR/scripts/utils.sh"
+source "$SCRIPT_DIR/utils.sh"
 
 # Check root permissions
 check_root
 
 # System setup
-source "$SCRIPT_DIR/scripts/system-setup.sh"
+source "$SCRIPT_DIR/system-setup.sh"
 setup_system_packages
 
 # Cleanup existing processes
@@ -31,12 +31,12 @@ kill_port_processes 3001
 kill_port_processes 8080
 
 # Backend setup and start
-source "$SCRIPT_DIR/scripts/backend-setup.sh"
+source "$SCRIPT_DIR/backend-setup.sh"
 setup_backend
 start_backend
 
 # Frontend setup and start
-source "$SCRIPT_DIR/scripts/frontend-setup.sh"
+source "$SCRIPT_DIR/frontend-setup.sh"
 setup_frontend
 start_frontend
 
@@ -49,7 +49,7 @@ echo "================================================"
 print_success "🎉 MikroTik Manager Setup Complete!"
 echo "================================================"
 
-source "$SCRIPT_DIR/scripts/health-check.sh"
+source "$SCRIPT_DIR/health-check.sh"
 show_status
 
 # Test services

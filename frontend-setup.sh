@@ -9,7 +9,7 @@ source "$(dirname "$0")/utils.sh"
 
 setup_frontend() {
     print_status "Setting up frontend..."
-    cd "$(dirname "$0")/.."
+    cd "$(dirname "$0")"
 
     # Install frontend dependencies
     print_status "Installing frontend dependencies..."
@@ -24,7 +24,7 @@ setup_frontend() {
 
 start_frontend() {
     print_status "Starting frontend server..."
-    cd "$(dirname "$0")/.."
+    cd "$(dirname "$0")"
 
     # Stop any existing frontend PM2 process
     pm2 stop mikrotik-frontend 2>/dev/null || true
