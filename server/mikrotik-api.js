@@ -476,17 +476,63 @@ app.post('/api/routers/:id/disconnect', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`MikroTik Manager API Server running on port ${PORT}`);
-  console.log(`Server available at: http://localhost:${PORT}`);
-  if (!RouterOSAPI) {
-    console.warn('WARNING: node-routeros package not found. API connections will fail.');
-    console.warn('Run: npm install node-routeros');
+
+// Function to find an available port
+const findAvailablePort = (startPort) => {
+  return new Promise((resolve) => {
+    const server = require('net').createServer();
+    
+    server.listen(startPort, () => {
+      const port = server.address().port;
+      server.close(() => resolve(port));
+    });
+    
+    server.on('error', () => {
+      resolve(findAvailablePort(startPort + 1));
+    });
+  });
+};
+
+// Start server with port fallback
+const startServer = async () => {
+  try {
+    const availablePort = await findAvailablePort(PORT);
+    
+    if (availablePort !== PORT) {
+      console.log(`Port ${PORT} is busy, using port ${availablePort} instead`);
+    }
+    
+    app.listen(availablePort, () => {
+      console.log(`MikroTik Manager API Server running on port ${availablePort}`);
+      console.log(`Server available at: http://localhost:${availablePort}`);
+      if (!RouterOSAPI) {
+        console.warn('WARNING: node-routeros package not found. API connections will fail.');
+        console.warn('Run: npm install node-routeros');
+      }
+      if (!Client) {
+        console.warn('WARNING: ssh2 package not found. SSH connections will fail.');
+        console.warn('Run: npm install ssh2');
+      }
+    });
+    
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
   }
-  if (!Client) {
-    console.warn('WARNING: ssh2 package not found. SSH connections will fail.');
-    console.warn('Run: npm install ssh2');
-  }
+};
+
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, shutting down gracefully...');
+  process.exit(0);
 });
+
+process.on('SIGINT', () => {
+  console.log('Received SIGINT, shutting down gracefully...');
+  process.exit(0);
+});
+
+// Start the server
+startServer();
 
 module.exports = { MikroTikManager };

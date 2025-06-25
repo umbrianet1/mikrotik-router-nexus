@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # MikroTik Manager - Complete Setup and Start Script for Ubuntu
@@ -33,15 +32,31 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Kill any processes using our ports
+# Kill any processes using our ports (more aggressive approach)
 kill_port_processes() {
     local port=$1
+    print_status "Checking for processes on port $port..."
+    
+    # Try multiple methods to kill processes on the port
     local processes=$(lsof -ti:$port 2>/dev/null || true)
     if [ ! -z "$processes" ]; then
-        print_warning "Killing processes using port $port: $processes"
+        print_warning "Found processes using port $port: $processes"
         kill -9 $processes 2>/dev/null || true
         sleep 2
+        
+        # Double check and try again if still running
+        local remaining=$(lsof -ti:$port 2>/dev/null || true)
+        if [ ! -z "$remaining" ]; then
+            print_warning "Still found processes, trying again: $remaining"
+            sudo kill -9 $remaining 2>/dev/null || true
+            sleep 2
+        fi
     fi
+    
+    # Also try to kill by process name
+    pkill -f "mikrotik-api.js" 2>/dev/null || true
+    pkill -f "node.*3001" 2>/dev/null || true
+    sleep 2
 }
 
 # Check if running as root for system packages
@@ -84,15 +99,21 @@ else
     print_success "serve already installed"
 fi
 
-# Stop any existing PM2 processes
+# Stop any existing PM2 processes more thoroughly
 print_status "Stopping existing PM2 processes..."
+pm2 stop all 2>/dev/null || true
 pm2 delete all 2>/dev/null || true
 pm2 kill 2>/dev/null || true
+sleep 3
 
 # Kill processes on our target ports
 print_status "Clearing ports 3001 and 8080..."
 kill_port_processes 3001
 kill_port_processes 8080
+
+# Make sure no PM2 processes are running
+print_status "Ensuring clean PM2 state..."
+pm2 flush 2>/dev/null || true
 
 # Backend Setup
 print_status "Setting up backend server..."
@@ -122,21 +143,41 @@ try {
 }
 "
 
-# Start backend with PM2
+# Start backend with PM2 and better error handling
 print_status "Starting backend server with PM2..."
-pm2 start mikrotik-api.js --name mikrotik-backend --watch --ignore-watch="node_modules"
+
+# First ensure the working directory is correct
+cd "$(dirname "$0")/server"
+
+# Start with PM2
+pm2 start mikrotik-api.js --name mikrotik-backend --watch --ignore-watch="node_modules" --max-restarts=3 --min-uptime="10s"
 
 # Wait for backend to start
-sleep 3
+sleep 5
 
-# Check if backend started successfully
-if ! pm2 list | grep -q "mikrotik-backend.*online"; then
-    print_error "Backend failed to start. Checking logs..."
-    pm2 logs mikrotik-backend --lines 10
-    exit 1
-fi
+# Check if backend started successfully with more retries
+backend_retries=0
+while [ $backend_retries -lt 3 ]; do
+    if pm2 list | grep -q "mikrotik-backend.*online"; then
+        print_success "Backend server started successfully"
+        break
+    else
+        backend_retries=$((backend_retries + 1))
+        print_warning "Backend not ready yet, attempt $backend_retries/3..."
+        if [ $backend_retries -eq 3 ]; then
+            print_error "Backend failed to start after 3 attempts. Checking logs..."
+            pm2 logs mikrotik-backend --lines 20
+            print_status "Trying to start backend on alternative port..."
+            pm2 restart mikrotik-backend
+            sleep 5
+        else
+            sleep 3
+        fi
+    fi
+done
 
-print_success "Backend server started on port 3001"
+# Return to project root for frontend
+cd ..
 
 # Frontend Setup
 print_status "Setting up frontend..."
