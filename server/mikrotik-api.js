@@ -1,12 +1,26 @@
 
-const { RouterOSAPI } = require('node-routeros');
-const { Client } = require('ssh2');
 const express = require('express');
 const cors = require('cors');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Prova a caricare le dipendenze opzionali
+let RouterOSAPI, Client;
+try {
+  const routeros = require('node-routeros');
+  RouterOSAPI = routeros.RouterOSAPI;
+} catch (error) {
+  console.warn('node-routeros not available, API connections will fail');
+}
+
+try {
+  const ssh2 = require('ssh2');
+  Client = ssh2.Client;
+} catch (error) {
+  console.warn('ssh2 not available, SSH connections will fail');
+}
 
 class MikroTikManager {
   constructor() {
@@ -15,6 +29,10 @@ class MikroTikManager {
 
   // Detect RouterOS version for compatibility
   async detectOSVersion(host, username, password) {
+    if (!RouterOSAPI) {
+      throw new Error('RouterOS API not available - install node-routeros package');
+    }
+    
     try {
       const api = new RouterOSAPI({
         host,
@@ -42,6 +60,10 @@ class MikroTikManager {
 
   // Connect via API (preferred method)
   async connectAPI(routerId, host, username, password) {
+    if (!RouterOSAPI) {
+      throw new Error('RouterOS API not available - install node-routeros package');
+    }
+    
     try {
       const api = new RouterOSAPI({
         host,
@@ -73,6 +95,10 @@ class MikroTikManager {
 
   // Connect via SSH (fallback method)
   async connectSSH(routerId, host, username, password) {
+    if (!Client) {
+      throw new Error('SSH client not available - install ssh2 package');
+    }
+    
     return new Promise((resolve, reject) => {
       const conn = new Client();
       
@@ -344,6 +370,28 @@ class MikroTikManager {
 
 const mikrotikManager = new MikroTikManager();
 
+// Route di base
+app.get('/', (req, res) => {
+  res.json({
+    name: 'MikroTik Manager API Server',
+    status: 'running',
+    version: '1.0.0',
+    endpoints: {
+      connect: 'POST /api/routers/connect',
+      addressLists: 'GET /api/routers/:id/address-lists',
+      addAddress: 'POST /api/routers/:id/address-lists/:listName/addresses',
+      removeAddress: 'DELETE /api/routers/:id/address-lists/:listName/addresses/:address',
+      backup: 'POST /api/routers/:id/backup',
+      command: 'POST /api/routers/:id/command',
+      disconnect: 'POST /api/routers/:id/disconnect'
+    },
+    dependencies: {
+      'node-routeros': RouterOSAPI ? 'available' : 'missing',
+      'ssh2': Client ? 'available' : 'missing'
+    }
+  });
+});
+
 // API Routes
 app.post('/api/routers/connect', async (req, res) => {
   try {
@@ -354,7 +402,7 @@ app.post('/api/routers/connect', async (req, res) => {
     try {
       result = await mikrotikManager.connectAPI(id, host, username, password);
     } catch (apiError) {
-      console.log('API failed, trying SSH...');
+      console.log('API failed, trying SSH...', apiError.message);
       result = await mikrotikManager.connectSSH(id, host, username, password);
     }
     
@@ -430,6 +478,15 @@ app.post('/api/routers/:id/disconnect', async (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`MikroTik Manager API Server running on port ${PORT}`);
+  console.log(`Server available at: http://localhost:${PORT}`);
+  if (!RouterOSAPI) {
+    console.warn('WARNING: node-routeros package not found. API connections will fail.');
+    console.warn('Run: npm install node-routeros');
+  }
+  if (!Client) {
+    console.warn('WARNING: ssh2 package not found. SSH connections will fail.');
+    console.warn('Run: npm install ssh2');
+  }
 });
 
 module.exports = { MikroTikManager };
