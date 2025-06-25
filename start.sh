@@ -33,6 +33,17 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Kill any processes using our ports
+kill_port_processes() {
+    local port=$1
+    local processes=$(lsof -ti:$port 2>/dev/null || true)
+    if [ ! -z "$processes" ]; then
+        print_warning "Killing processes using port $port: $processes"
+        kill -9 $processes 2>/dev/null || true
+        sleep 2
+    fi
+}
+
 # Check if running as root for system packages
 check_root() {
     if [[ $EUID -eq 0 ]]; then
@@ -55,7 +66,7 @@ fi
 
 # Install build tools
 print_status "Installing build tools..."
-sudo apt-get install -y build-essential python3
+sudo apt-get install -y build-essential python3 lsof
 
 # Install PM2 globally if not present
 if ! command -v pm2 &> /dev/null; then
@@ -72,6 +83,16 @@ if ! command -v serve &> /dev/null; then
 else
     print_success "serve already installed"
 fi
+
+# Stop any existing PM2 processes
+print_status "Stopping existing PM2 processes..."
+pm2 delete all 2>/dev/null || true
+pm2 kill 2>/dev/null || true
+
+# Kill processes on our target ports
+print_status "Clearing ports 3001 and 8080..."
+kill_port_processes 3001
+kill_port_processes 8080
 
 # Backend Setup
 print_status "Setting up backend server..."
@@ -103,9 +124,17 @@ try {
 
 # Start backend with PM2
 print_status "Starting backend server with PM2..."
-pm2 delete mikrotik-backend 2>/dev/null || true
 pm2 start mikrotik-api.js --name mikrotik-backend --watch --ignore-watch="node_modules"
-pm2 save
+
+# Wait for backend to start
+sleep 3
+
+# Check if backend started successfully
+if ! pm2 list | grep -q "mikrotik-backend.*online"; then
+    print_error "Backend failed to start. Checking logs..."
+    pm2 logs mikrotik-backend --lines 10
+    exit 1
+fi
 
 print_success "Backend server started on port 3001"
 
@@ -123,8 +152,17 @@ npm run build
 
 # Start frontend with PM2
 print_status "Starting frontend server with PM2..."
-pm2 delete mikrotik-frontend 2>/dev/null || true
 pm2 start serve --name mikrotik-frontend -- -s dist -l 8080
+
+# Wait for frontend to start
+sleep 3
+
+# Check if frontend started successfully
+if ! pm2 list | grep -q "mikrotik-frontend.*online"; then
+    print_error "Frontend failed to start. Checking logs..."
+    pm2 logs mikrotik-frontend --lines 10
+    exit 1
+fi
 
 print_success "Frontend server started on port 8080"
 
@@ -172,13 +210,23 @@ if curl -s http://localhost:3001/ > /dev/null; then
     print_success "✅ Backend is responding"
 else
     print_error "❌ Backend is not responding"
+    print_status "Backend logs:"
+    pm2 logs mikrotik-backend --lines 5
 fi
 
 if curl -s http://localhost:8080/ > /dev/null; then
     print_success "✅ Frontend is responding"
 else
     print_error "❌ Frontend is not responding"
+    print_status "Frontend logs:"
+    pm2 logs mikrotik-frontend --lines 5
 fi
 
 echo ""
 print_success "Setup completed! You can now access MikroTik Manager at http://localhost:8080"
+echo ""
+print_status "🔍 If you encounter issues:"
+echo "   - Check logs: pm2 logs"
+echo "   - Restart services: pm2 restart all"
+echo "   - Stop all: pm2 stop all && pm2 kill"
+echo "   - Re-run this script: ./start.sh"
