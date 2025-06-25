@@ -9,7 +9,7 @@ source "$(dirname "$0")/utils.sh"
 
 setup_backend() {
     print_status "Setting up backend server..."
-    cd "$(dirname "$0")/server"
+    cd "$(dirname "$0")/Server"
 
     # Install backend dependencies
     print_status "Installing backend dependencies..."
@@ -40,7 +40,7 @@ setup_backend() {
 
 start_backend() {
     print_status "Starting backend server directly with /usr/bin/node..."
-    cd "$(dirname "$0")/server"
+    cd "$(dirname "$0")/Server"
 
     # Start backend in background
     nohup /usr/bin/node mikrotik-api.js > ../backend.log 2>&1 &
