@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Edit, Trash2, Download, Upload, RefreshCw, Users, Search, Filter } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Plus, Edit, Trash2, Download, Upload, RefreshCw, Users, Search, Send, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Router {
@@ -42,12 +42,21 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
       name: "Blocked_IPs",
       routerId: 1,
       routerName: "Main Gateway",
-      addresses: ["192.168.1.100", "10.0.0.50", "172.16.1.25"],
+      addresses: ["192.168.1.100", "10.0.0.50", "172.16.1.25", "192.168.1.200"],
       lastSync: "2024-06-25 10:30",
       dynamic: false
     },
     {
       id: 2,
+      name: "Blocked_IPs",
+      routerId: 2,
+      routerName: "Branch Office",
+      addresses: ["192.168.1.100", "10.0.0.50", "192.168.2.99"],
+      lastSync: "2024-06-25 10:30",
+      dynamic: false
+    },
+    {
+      id: 3,
       name: "VPN_Clients",
       routerId: 1,
       routerName: "Main Gateway",
@@ -56,7 +65,7 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
       dynamic: true
     },
     {
-      id: 3,
+      id: 4,
       name: "Internal_Servers",
       routerId: 2,
       routerName: "Branch Office",
@@ -67,9 +76,15 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
   ]);
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
   const [selectedList, setSelectedList] = useState<AddressList | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRouter, setSelectedRouter] = useState<string>('all');
+  const [editingAddress, setEditingAddress] = useState<string>('');
+  const [newAddress, setNewAddress] = useState<string>('');
+  const [sourceList, setSourceList] = useState<AddressList | null>(null);
+  const [targetRouters, setTargetRouters] = useState<number[]>([]);
   const [newList, setNewList] = useState({
     name: '',
     routerId: '',
@@ -84,6 +99,15 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
     const matchesRouter = selectedRouter === 'all' || list.routerId.toString() === selectedRouter;
     return matchesSearch && matchesRouter;
   });
+
+  // Group lists by name to show differences
+  const groupedLists = filteredLists.reduce((acc, list) => {
+    if (!acc[list.name]) {
+      acc[list.name] = [];
+    }
+    acc[list.name].push(list);
+    return acc;
+  }, {} as Record<string, AddressList[]>);
 
   const handleAddList = () => {
     if (!newList.name || !newList.routerId) {
@@ -123,23 +147,79 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
     });
   };
 
-  const handleSyncList = (listId: number) => {
+  const handleAddAddress = (listId: number) => {
+    if (!newAddress.trim()) return;
+
+    setAddressLists(prev => prev.map(list => 
+      list.id === listId 
+        ? { ...list, addresses: [...list.addresses, newAddress.trim()] }
+        : list
+    ));
+    
+    setNewAddress('');
     toast({
-      title: "Synchronizing",
-      description: "Syncing address list with router...",
+      title: "Address Added",
+      description: "New address has been added to the list.",
+    });
+  };
+
+  const handleRemoveAddress = (listId: number, address: string) => {
+    setAddressLists(prev => prev.map(list => 
+      list.id === listId 
+        ? { ...list, addresses: list.addresses.filter(addr => addr !== address) }
+        : list
+    ));
+    
+    toast({
+      title: "Address Removed",
+      description: "Address has been removed from the list.",
+    });
+  };
+
+  const handleSyncToRouters = () => {
+    if (!sourceList || targetRouters.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select source list and target routers.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    targetRouters.forEach(routerId => {
+      const router = routers.find(r => r.id === routerId);
+      const existingList = addressLists.find(l => l.name === sourceList.name && l.routerId === routerId);
+      
+      if (existingList) {
+        // Update existing list
+        setAddressLists(prev => prev.map(list => 
+          list.id === existingList.id 
+            ? { ...list, addresses: [...sourceList.addresses], lastSync: new Date().toLocaleString() }
+            : list
+        ));
+      } else {
+        // Create new list
+        const newList: AddressList = {
+          id: Date.now() + routerId,
+          name: sourceList.name,
+          routerId: routerId,
+          routerName: router?.name || 'Unknown',
+          addresses: [...sourceList.addresses],
+          lastSync: new Date().toLocaleString(),
+          dynamic: sourceList.dynamic
+        };
+        setAddressLists(prev => [...prev, newList]);
+      }
     });
 
-    setTimeout(() => {
-      setAddressLists(prev => prev.map(list => 
-        list.id === listId 
-          ? { ...list, lastSync: new Date().toLocaleString() }
-          : list
-      ));
-      toast({
-        title: "Sync Complete",
-        description: "Address list synchronized successfully.",
-      });
-    }, 1500);
+    setIsSyncDialogOpen(false);
+    setSourceList(null);
+    setTargetRouters([]);
+
+    toast({
+      title: "Sync Complete",
+      description: `Address list synchronized to ${targetRouters.length} router(s).`,
+    });
   };
 
   const handleDeleteList = (listId: number) => {
@@ -150,20 +230,18 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
     });
   };
 
-  const handleExportList = (list: AddressList) => {
-    const content = list.addresses.join('\n');
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${list.name}_addresses.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const getAllAddressesForList = (listName: string) => {
+    const lists = addressLists.filter(l => l.name === listName);
+    const allAddresses = new Set<string>();
+    lists.forEach(list => list.addresses.forEach(addr => allAddresses.add(addr)));
+    return Array.from(allAddresses);
+  };
 
-    toast({
-      title: "Export Complete",
-      description: `${list.name} exported successfully.`,
-    });
+  const getAddressDifferences = (listName: string, address: string) => {
+    const lists = addressLists.filter(l => l.name === listName);
+    const routersWithAddress = lists.filter(l => l.addresses.includes(address));
+    const routersWithoutAddress = lists.filter(l => !l.addresses.includes(address));
+    return { with: routersWithAddress, without: routersWithoutAddress };
   };
 
   return (
@@ -174,6 +252,62 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
           <p className="text-slate-400">Manage IP address lists across your router fleet</p>
         </div>
         <div className="flex gap-2">
+          <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700">
+                <Send className="h-4 w-4 mr-2" />
+                Sync Lists
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-slate-800 border-slate-700 max-w-2xl">
+              <DialogHeader>
+                <DialogTitle className="text-white">Sync Address List</DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  Select target routers to sync the address list to.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                {sourceList && (
+                  <div className="p-4 bg-slate-700/50 rounded-lg">
+                    <h4 className="text-white font-medium mb-2">Source: {sourceList.name}</h4>
+                    <p className="text-slate-400 text-sm">From: {sourceList.routerName}</p>
+                    <p className="text-slate-400 text-sm">{sourceList.addresses.length} addresses</p>
+                  </div>
+                )}
+                
+                <div>
+                  <Label className="text-slate-200 mb-2 block">Select Target Routers:</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {routers.filter(r => r.status === 'online' && r.id !== sourceList?.routerId).map(router => (
+                      <label key={router.id} className="flex items-center space-x-2 p-2 bg-slate-700/30 rounded border border-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={targetRouters.includes(router.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setTargetRouters([...targetRouters, router.id]);
+                            } else {
+                              setTargetRouters(targetRouters.filter(id => id !== router.id));
+                            }
+                          }}
+                          className="text-blue-600"
+                        />
+                        <span className="text-white text-sm">{router.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsSyncDialogOpen(false)} className="border-slate-600">
+                  Cancel
+                </Button>
+                <Button onClick={handleSyncToRouters} className="bg-green-600 hover:bg-green-700">
+                  Sync to {targetRouters.length} Router(s)
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
@@ -268,94 +402,157 @@ const AddressListManager = ({ routers }: AddressListManagerProps) => {
         </CardContent>
       </Card>
 
-      {/* Address Lists */}
+      {/* Address Lists with Differences */}
       <div className="grid gap-6">
-        {filteredLists.map((list) => (
-          <Card key={list.id} className="bg-slate-800/50 border-slate-700">
+        {Object.entries(groupedLists).map(([listName, lists]) => (
+          <Card key={listName} className="bg-slate-800/50 border-slate-700">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <Users className="h-5 w-5 text-blue-400" />
                   <div>
-                    <CardTitle className="text-white">{list.name}</CardTitle>
+                    <CardTitle className="text-white">{listName}</CardTitle>
                     <CardDescription className="text-slate-400">
-                      {list.routerName} • {list.addresses.length} addresses
+                      {lists.length} router(s) • {getAllAddressesForList(listName).length} unique addresses
                     </CardDescription>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {list.dynamic && (
-                    <Badge variant="secondary" className="bg-yellow-600">
-                      Dynamic
-                    </Badge>
-                  )}
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleSyncList(list.id)}
+                    onClick={() => {
+                      setSourceList(lists[0]);
+                      setIsSyncDialogOpen(true);
+                    }}
                     className="border-slate-600"
                   >
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                    <Send className="h-4 w-4 mr-2" />
                     Sync
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExportList(list)}
-                    className="border-slate-600"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-slate-600"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteList(list.id)}
-                    className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
-                  >
-                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="addresses" className="w-full">
+              <Tabs defaultValue="comparison">
                 <TabsList className="grid w-full grid-cols-2 bg-slate-700/50">
-                  <TabsTrigger value="addresses">Addresses ({list.addresses.length})</TabsTrigger>
-                  <TabsTrigger value="info">Information</TabsTrigger>
+                  <TabsTrigger value="comparison">Address Comparison</TabsTrigger>
+                  <TabsTrigger value="individual">Individual Lists</TabsTrigger>
                 </TabsList>
-                <TabsContent value="addresses" className="space-y-4">
-                  <div className="max-h-48 overflow-y-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      {list.addresses.map((address, index) => (
-                        <div key={index} className="p-2 rounded bg-slate-700/30 border border-slate-600">
-                          <code className="text-sm text-slate-200 font-mono">{address}</code>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                
+                <TabsContent value="comparison" className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-600">
+                        <TableHead className="text-slate-300">IP Address</TableHead>
+                        {lists.map(list => (
+                          <TableHead key={list.id} className="text-slate-300 text-center">
+                            {list.routerName}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {getAllAddressesForList(listName).map(address => {
+                        const differences = getAddressDifferences(listName, address);
+                        return (
+                          <TableRow key={address} className="border-slate-600">
+                            <TableCell className="text-slate-200 font-mono text-sm">
+                              {address}
+                            </TableCell>
+                            {lists.map(list => (
+                              <TableCell key={list.id} className="text-center">
+                                {list.addresses.includes(address) ? (
+                                  <Check className="h-4 w-4 text-green-400 mx-auto" />
+                                ) : (
+                                  <X className="h-4 w-4 text-red-400 mx-auto" />
+                                )}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </TabsContent>
-                <TabsContent value="info" className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-slate-400">Router</p>
-                      <p className="text-white">{list.routerName}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-400">Total Addresses</p>
-                      <p className="text-white">{list.addresses.length}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-400">Last Sync</p>
-                      <p className="text-white">{list.lastSync}</p>
-                    </div>
+
+                <TabsContent value="individual" className="space-y-4">
+                  <div className="grid gap-4">
+                    {lists.map(list => (
+                      <Card key={list.id} className="bg-slate-700/30 border-slate-600">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-sm text-white">{list.routerName}</CardTitle>
+                              <CardDescription className="text-xs text-slate-400">
+                                {list.addresses.length} addresses • Last sync: {list.lastSync}
+                              </CardDescription>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedList(list);
+                                  setIsEditDialogOpen(true);
+                                }}
+                                className="border-slate-600 h-8"
+                              >
+                                <Edit className="h-3 w-3 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteList(list.id)}
+                                className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white h-8"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="max-h-32 overflow-y-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                              {list.addresses.map((address, index) => (
+                                <div key={index} className="flex items-center justify-between p-2 rounded bg-slate-600/30 border border-slate-500">
+                                  <code className="text-xs text-slate-200 font-mono">{address}</code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveAddress(list.id, address)}
+                                    className="h-6 w-6 p-0 hover:bg-red-600/20"
+                                  >
+                                    <X className="h-3 w-3 text-red-400" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 mt-3">
+                            <Input
+                              value={newAddress}
+                              onChange={(e) => setNewAddress(e.target.value)}
+                              placeholder="Add new IP address"
+                              className="flex-1 bg-slate-600 border-slate-500 text-white text-sm h-8"
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleAddAddress(list.id);
+                                }
+                              }}
+                            />
+                            <Button
+                              onClick={() => handleAddAddress(list.id)}
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-700 h-8"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
                 </TabsContent>
               </Tabs>
