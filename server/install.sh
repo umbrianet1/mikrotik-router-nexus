@@ -1,9 +1,9 @@
 
 #!/bin/bash
 
-# MikroTik Manager Server Installation Script for Ubuntu 24
+# MikroTik Manager server Installation Script for Ubuntu 24
 
-echo "Installing MikroTik Manager Server on Ubuntu 24..."
+echo "Installing MikroTik Manager server on Ubuntu 24..."
 
 # Update system
 sudo apt update
@@ -54,7 +54,7 @@ try {
 # Create systemd service
 sudo tee /etc/systemd/system/mikrotik-manager.service > /dev/null <<EOF
 [Unit]
-Description=MikroTik Manager API Server
+Description=MikroTik Manager API server
 After=network.target
 
 [Service]
@@ -93,7 +93,7 @@ fi
 # Check service status
 echo ""
 echo "Installation completed!"
-echo "Server should be running on port 3001"
+echo "server should be running on port 3001"
 echo ""
 echo "Service status:"
 sudo systemctl status mikrotik-manager --no-pager
