@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 
@@ -102,7 +101,14 @@ class MikroTikManager {
     return new Promise((resolve, reject) => {
       const conn = new Client();
       
+      // Timeout per connessione
+      const connectionTimeout = setTimeout(() => {
+        conn.end();
+        reject(new Error(`SSH connection timeout to ${host}`));
+      }, 15000);
+      
       conn.on('ready', async () => {
+        clearTimeout(connectionTimeout);
         this.connections.set(routerId, { type: 'ssh', connection: conn, host });
         
         // Get system info via SSH
@@ -117,36 +123,98 @@ class MikroTikManager {
             method: 'ssh'
           });
         } catch (error) {
+          clearTimeout(connectionTimeout);
           reject(error);
         }
       });
 
       conn.on('error', (err) => {
-        reject(err);
+        clearTimeout(connectionTimeout);
+        console.error(`SSH connection error to ${host}:`, err.message);
+        reject(new Error(`SSH connection failed: ${err.message}`));
       });
 
-      conn.connect({
+      conn.on('close', () => {
+        clearTimeout(connectionTimeout);
+      });
+
+      // Configurazione SSH ottimizzata per RouterOS
+      const sshConfig = {
         host,
         username,
         password,
         port: 22,
-        readyTimeout: 10000
-      });
+        readyTimeout: 12000,
+        keepaliveInterval: 30000,
+        keepaliveCountMax: 3,
+        // Algoritmi supportati da RouterOS (incluse versioni più vecchie)
+        algorithms: {
+          kex: [
+            'diffie-hellman-group14-sha256',
+            'diffie-hellman-group14-sha1',
+            'diffie-hellman-group1-sha1',
+            'ecdh-sha2-nistp256',
+            'ecdh-sha2-nistp384'
+          ],
+          cipher: [
+            'aes128-ctr',
+            'aes192-ctr', 
+            'aes256-ctr',
+            'aes128-cbc',
+            'aes192-cbc',
+            'aes256-cbc',
+            '3des-cbc'
+          ],
+          hmac: [
+            'hmac-sha2-256',
+            'hmac-sha2-512',
+            'hmac-sha1',
+            'hmac-md5'
+          ],
+          compress: ['none']
+        },
+        // Per RouterOS con autenticazione keyboard-interactive
+        tryKeyboard: true,
+        // Debug per troubleshooting (rimuovere in produzione)
+        debug: process.env.NODE_ENV === 'development' ? (info) => {
+          console.log('SSH Debug:', info);
+        } : undefined
+      };
+
+      try {
+        conn.connect(sshConfig);
+      } catch (error) {
+        clearTimeout(connectionTimeout);
+        reject(new Error(`SSH connection setup failed: ${error.message}`));
+      }
     });
   }
 
-  // Execute SSH command
-  executeSSHCommand(conn, command) {
+  // Execute SSH command with improved error handling
+  executeSSHCommand(conn, command, timeout = 10000) {
     return new Promise((resolve, reject) => {
+      const commandTimeout = setTimeout(() => {
+        reject(new Error(`Command timeout: ${command}`));
+      }, timeout);
+
       conn.exec(command, (err, stream) => {
-        if (err) reject(err);
+        if (err) {
+          clearTimeout(commandTimeout);
+          reject(new Error(`SSH exec failed: ${err.message}`));
+          return;
+        }
         
         let output = '';
-        stream.on('close', (code) => {
+        let errorOutput = '';
+        
+        stream.on('close', (code, signal) => {
+          clearTimeout(commandTimeout);
+          
           if (code === 0) {
             resolve(output);
           } else {
-            reject(new Error(`Command failed with code ${code}`));
+            const errorMsg = errorOutput || `Command failed with exit code ${code}`;
+            reject(new Error(`Command failed: ${errorMsg}`));
           }
         });
         
@@ -155,7 +223,14 @@ class MikroTikManager {
         });
         
         stream.stderr.on('data', (data) => {
-          console.error('SSH Error:', data.toString());
+          errorOutput += data.toString();
+          console.error('SSH Command Error:', data.toString());
+        });
+
+        // Timeout per singolo comando
+        stream.setTimeout(timeout, () => {
+          clearTimeout(commandTimeout);
+          reject(new Error(`Command execution timeout: ${command}`));
         });
       });
     });
@@ -238,7 +313,7 @@ class MikroTikManager {
     }
   }
 
-  // Create backup
+  // Create backup with improved SSH handling
   async createBackup(routerId, backupName) {
     const conn = this.connections.get(routerId);
     if (!conn) throw new Error('Router not connected');
@@ -263,16 +338,36 @@ class MikroTikManager {
           size: files[0]?.size || 'Unknown'
         };
       } else {
+        // SSH backup con timeout esteso
         await this.executeSSHCommand(
           conn.connection,
-          `/system backup save name=${backupName}`
+          `/system backup save name=${backupName}`,
+          20000 // 20 secondi per il backup
         );
         
-        return {
-          success: true,
-          filename: `${backupName}.backup`,
-          size: 'Unknown'
-        };
+        // Verifica che il backup sia stato creato
+        try {
+          const fileList = await this.executeSSHCommand(
+            conn.connection,
+            `/file print where name~"${backupName}.backup"`
+          );
+          
+          const sizeMatch = fileList.match(/size=(\d+)/);
+          const size = sizeMatch ? `${Math.round(parseInt(sizeMatch[1]) / 1024)} KB` : 'Unknown';
+          
+          return {
+            success: true,
+            filename: `${backupName}.backup`,
+            size: size
+          };
+        } catch (verifyError) {
+          console.warn('Could not verify backup size:', verifyError.message);
+          return {
+            success: true,
+            filename: `${backupName}.backup`,
+            size: 'Unknown'
+          };
+        }
       }
     } catch (error) {
       console.error('Error creating backup:', error.message);
@@ -280,7 +375,7 @@ class MikroTikManager {
     }
   }
 
-  // Execute custom command
+  // Execute custom command with improved error handling
   async executeCommand(routerId, command) {
     const conn = this.connections.get(routerId);
     if (!conn) throw new Error('Router not connected');
@@ -293,7 +388,13 @@ class MikroTikManager {
           output: JSON.stringify(result, null, 2)
         };
       } else {
-        const output = await this.executeSSHCommand(conn.connection, command);
+        // Determina il timeout basato sul comando
+        const isLongRunningCommand = command.includes('backup') || 
+                                   command.includes('upgrade') || 
+                                   command.includes('export');
+        const timeout = isLongRunningCommand ? 60000 : 15000;
+        
+        const output = await this.executeSSHCommand(conn.connection, command, timeout);
         return {
           success: true,
           output: output
@@ -302,7 +403,7 @@ class MikroTikManager {
     } catch (error) {
       return {
         success: false,
-        output: error.message
+        output: `Error: ${error.message}`
       };
     }
   }
@@ -358,12 +459,17 @@ class MikroTikManager {
   disconnect(routerId) {
     const conn = this.connections.get(routerId);
     if (conn) {
-      if (conn.type === 'api') {
-        conn.connection.disconnect();
-      } else {
-        conn.connection.end();
+      try {
+        if (conn.type === 'api') {
+          conn.connection.disconnect();
+        } else {
+          conn.connection.end();
+        }
+      } catch (error) {
+        console.warn(`Error disconnecting ${routerId}:`, error.message);
+      } finally {
+        this.connections.delete(routerId);
       }
-      this.connections.delete(routerId);
     }
   }
 }
