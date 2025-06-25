@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,22 +76,30 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
 
   const handleDeleteRouter = async (routerId: number) => {
     try {
-      // Disconnect if connected
       const router = routers.find(r => r.id === routerId);
+      
+      // Solo se il router è davvero online, prova a disconnetterlo
       if (router && router.status === 'online') {
-        await mikrotikApi.disconnectRouter(routerId);
+        try {
+          await mikrotikApi.disconnectRouter(routerId);
+        } catch (disconnectError) {
+          console.log('Disconnect failed, but proceeding with deletion:', disconnectError);
+          // Non bloccare la cancellazione se la disconnessione fallisce
+        }
       }
       
+      // Procedi sempre con la cancellazione
       setRouters(routers.filter(r => r.id !== routerId));
       toast({
         title: "Router Deleted",
-        description: "Router has been removed from management.",
+        description: `${router?.name || 'Router'} has been removed from management.`,
       });
     } catch (error) {
+      // Anche se c'è un errore, rimuovi comunque il router dalla lista
+      setRouters(routers.filter(r => r.id !== routerId));
       toast({
-        title: "Error",
-        description: "Failed to disconnect router before deletion.",
-        variant: "destructive",
+        title: "Router Deleted",
+        description: "Router has been removed from management (connection error ignored).",
       });
     }
   };
