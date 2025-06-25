@@ -1,22 +1,22 @@
 
 #!/bin/bash
 
-# MikroTik Manager - Backend Setup Script
-# Handles backend server setup and management
+# mikrotik manager - backend setup script
+# handles backend server setup and management
 
 set -e
 source "$(dirname "$0")/utils.sh"
 
 setup_backend() {
-    print_status "Setting up backend server..."
-    cd "$(dirname "$0")/server"
+    print_status "setting up backend server..."
+    cd "$(dirname "$0")/backend"
 
-    # Install backend dependencies
-    print_status "Installing backend dependencies..."
+    # install backend dependencies
+    print_status "installing backend dependencies..."
     npm install
 
-    # Test backend dependencies
-    print_status "Testing backend dependencies..."
+    # test backend dependencies
+    print_status "testing backend dependencies..."
     node -e "
     try {
       const routeros = require('node-routeros');
@@ -35,37 +35,37 @@ setup_backend() {
     }
     "
 
-    print_success "Backend dependencies installed and tested"
+    print_success "backend dependencies installed and tested"
 }
 
 start_backend() {
-    print_status "Starting backend server directly with /usr/bin/node..."
-    cd "$(dirname "$0")/server"
+    print_status "starting backend server directly with /usr/bin/node..."
+    cd "$(dirname "$0")/backend"
 
-    # Start backend in background
+    # start backend in background
     nohup /usr/bin/node mikrotik-api.js > ../backend.log 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > ../backend.pid
 
-    print_status "Backend started with PID: $BACKEND_PID"
+    print_status "backend started with pid: $BACKEND_PID"
 
-    # Wait for backend to start
-    print_status "Waiting for backend to initialize..."
+    # wait for backend to start
+    print_status "waiting for backend to initialize..."
     sleep 8
 
-    # Check if backend is running and responding
+    # check if backend is running and responding
     backend_retries=0
     backend_started=false
     while [ $backend_retries -lt 5 ]; do
         if curl -s http://localhost:3001/ > /dev/null 2>&1; then
-            print_success "✅ Backend server started successfully on port 3001"
+            print_success "✅ backend server started successfully on port 3001"
             backend_started=true
             break
         else
             backend_retries=$((backend_retries + 1))
-            print_warning "Backend not ready yet, attempt $backend_retries/5..."
+            print_warning "backend not ready yet, attempt $backend_retries/5..."
             if [ $backend_retries -eq 5 ]; then
-                print_error "Backend failed to start after 5 attempts. Checking logs..."
+                print_error "backend failed to start after 5 attempts. checking logs..."
                 tail -20 ../backend.log
                 exit 1
             else
@@ -75,12 +75,12 @@ start_backend() {
     done
 
     if [ "$backend_started" = false ]; then
-        print_error "Backend failed to start. Exiting..."
+        print_error "backend failed to start. exiting..."
         exit 1
     fi
 }
 
-# Run setup and start if called directly
+# run setup and start if called directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     setup_backend
     start_backend

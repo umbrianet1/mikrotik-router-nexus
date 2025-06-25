@@ -1,40 +1,40 @@
 
 #!/bin/bash
 
-# MikroTik Manager server Installation Script for Ubuntu 24
+# mikrotik manager backend installation script for ubuntu 24
 
-echo "Installing MikroTik Manager server on Ubuntu 24..."
+echo "installing mikrotik manager backend on ubuntu 24..."
 
-# Update system
+# update system
 sudo apt update
 sudo apt upgrade -y
 
-# Install Node.js 20
+# install node.js 20
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
-# Install build tools (needed for some native modules)
+# install build tools (needed for some native modules)
 sudo apt-get install -y build-essential python3
 
-# Install PM2 for process management
+# install pm2 for process management
 sudo npm install -g pm2
 
-# Create directory structure
-sudo mkdir -p /opt/mikrotik-manager/server
+# create directory structure
+sudo mkdir -p /opt/mikrotik-manager/backend
 sudo mkdir -p /opt/mikrotik-manager/logs
 
-# Copy server files
-sudo cp -r * /opt/mikrotik-manager/server/
+# copy backend files
+sudo cp -r * /opt/mikrotik-manager/backend/
 
-# Navigate to server directory
-cd /opt/mikrotik-manager/server
+# navigate to backend directory
+cd /opt/mikrotik-manager/backend
 
-# Install dependencies with verbose output
-echo "Installing Node.js dependencies..."
+# install dependencies with verbose output
+echo "installing node.js dependencies..."
 sudo npm install --verbose
 
-# Verify installation
-echo "Verifying installation..."
+# verify installation
+echo "verifying installation..."
 node -e "
 try {
   const routeros = require('node-routeros');
@@ -51,16 +51,16 @@ try {
 }
 "
 
-# Create systemd service
+# create systemd service
 sudo tee /etc/systemd/system/mikrotik-manager.service > /dev/null <<EOF
 [Unit]
-Description=MikroTik Manager API server
+Description=mikrotik manager api backend
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/mikrotik-manager/server
+WorkingDirectory=/opt/mikrotik-manager/backend
 ExecStart=/usr/bin/node mikrotik-api.js
 Restart=always
 RestartSec=10
@@ -73,41 +73,41 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# Stop any existing service
+# stop any existing service
 sudo systemctl stop mikrotik-manager 2>/dev/null || true
 
-# Enable and start service
+# enable and start service
 sudo systemctl daemon-reload
 sudo systemctl enable mikrotik-manager
 sudo systemctl start mikrotik-manager
 
-# Wait a moment for service to start
+# wait a moment for service to start
 sleep 3
 
-# Configure firewall (if ufw is active)
+# configure firewall (if ufw is active)
 if command -v ufw &> /dev/null; then
     sudo ufw allow 3001/tcp
-    echo "Firewall configured to allow port 3001"
+    echo "firewall configured to allow port 3001"
 fi
 
-# Check service status
+# check service status
 echo ""
-echo "Installation completed!"
-echo "server should be running on port 3001"
+echo "installation completed!"
+echo "backend should be running on port 3001"
 echo ""
-echo "Service status:"
+echo "service status:"
 sudo systemctl status mikrotik-manager --no-pager
 
 echo ""
-echo "Testing server response:"
+echo "testing backend response:"
 curl -s http://localhost:3001/ | head -10
 
 echo ""
-echo "Commands:"
-echo "  Check status: sudo systemctl status mikrotik-manager"
-echo "  View logs: sudo journalctl -u mikrotik-manager -f"
-echo "  Restart: sudo systemctl restart mikrotik-manager"
-echo "  Stop: sudo systemctl stop mikrotik-manager"
+echo "commands:"
+echo "  check status: sudo systemctl status mikrotik-manager"
+echo "  view logs: sudo journalctl -u mikrotik-manager -f"
+echo "  restart: sudo systemctl restart mikrotik-manager"
+echo "  stop: sudo systemctl stop mikrotik-manager"
 echo ""
-echo "If you see dependency errors, run:"
-echo "  cd /opt/mikrotik-manager/server && sudo npm install"
+echo "if you see dependency errors, run:"
+echo "  cd /opt/mikrotik-manager/backend && sudo npm install"
