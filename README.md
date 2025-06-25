@@ -1,461 +1,209 @@
 
-# MikroTik Manager - Centralized Router Management Platform
+# MikroTik Manager - Centralized Router Management
 
-Una web application professionale per la gestione centralizzata di router MikroTik, con focus su Address List management e backup automatizzati.
+A web application for centralized management of MikroTik routers with real API/SSH connectivity, supporting both RouterOS 6.x and 7.x.
 
-## 🚀 Caratteristiche Principali
+## Features
 
-### 📊 Dashboard Centralizzata
-- **Monitoraggio in tempo reale** dello stato dei router
-- **Statistiche di rete** e health monitoring
-- **Overview rapida** di tutti i dispositivi gestiti
+### Real MikroTik Integration
+- **API Connection**: Primary connection method via RouterOS API (port 8728)
+- **SSH Fallback**: Automatic fallback to SSH connection (port 22)
+- **Version Detection**: Automatic RouterOS version detection and compatibility handling
+- **Multi-Router Support**: Manage multiple routers simultaneously
 
-### 🌐 Gestione Address List
-- **CRUD completo** per le Address List su tutti i router
-- **Sincronizzazione** automatica e manuale
-- **Import/Export** in formato standard
-- **Ricerca e filtri** avanzati
-- **Gestione batch** su più router simultaneamente
+### Address List Management
+- View and compare address lists across multiple routers
+- Add/remove IP addresses from specific router lists
+- Bulk synchronization between routers
+- Visual diff highlighting for inconsistencies
+- Support for both IPv4 and IPv6 addresses
 
-### 💾 Sistema Backup
-- **Backup automatici** con scheduler configurabile
-- **Backup on-demand** per emergenze
-- **Retention policy** personalizzabile
-- **Compressione e crittografia** opzionale
-- **Cronologia completa** dei backup
+### Backup Management
+- Manual and scheduled backups
+- Real backup file creation on routers
+- Backup download and storage
+- Retention policies and cleanup
 
-### 🔧 Command Center
-- **Esecuzione comandi** via SSH e API MikroTik
-- **Comandi rapidi** pre-configurati
-- **Cronologia comandi** con output
-- **Compatibilità** con tutte le versioni RouterOS
+### Command Center
+- Execute RouterOS commands via API or SSH
+- Command history and output logging
+- Pre-defined command templates
+- Support for both RouterOS 6.x and 7.x syntax
 
-### 🔐 Sicurezza
-- **Autenticazione locale** sicura
-- **Gestione credenziali** crittografate
-- **Audit logging** completo
-- **2FA** opzionale
-- **Session management** avanzato
+## Installation on Ubuntu 24
 
-### ⚙️ Configurazione Avanzata
-- **Impostazioni sistema** modulari
-- **Notifiche email/Slack** configurabili
-- **Export/Import** configurazioni
-- **Log levels** personalizzabili
-
-## 🛠️ Stack Tecnologico
-
-- **Frontend**: React 18 + TypeScript
-- **Styling**: Tailwind CSS + shadcn/ui
-- **Build Tool**: Vite
-- **State Management**: React Query
-- **Routing**: React Router
-- **UI Components**: Radix UI primitives
-
-## 📋 Requisiti di Sistema
-
-### Ubuntu 24.04 LTS
+### Prerequisites
 ```bash
-# Aggiorna il sistema
-sudo apt update && sudo apt upgrade -y
-
-# Installa Node.js 20 LTS
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Verifica installazione
-node --version  # dovrebbe essere v20.x.x
-npm --version   # dovrebbe essere v10.x.x
+sudo apt update
+sudo apt upgrade -y
 ```
 
-### Dipendenze Aggiuntive
+### Backend Server Installation
 ```bash
-# Git per clonare il repository
-sudo apt install git -y
-
-# PM2 per process management (opzionale)
-sudo npm install -g pm2
-
-# Nginx per reverse proxy (opzionale)
-sudo apt install nginx -y
+cd server
+chmod +x install.sh
+sudo ./install.sh
 ```
 
-## 🚀 Installazione e Deploy
+This will:
+- Install Node.js 20
+- Install required dependencies
+- Create system service
+- Configure firewall
+- Start the API server on port 3001
 
-### 1. Clone del Repository
+### Frontend Development Server
 ```bash
-# Clona il progetto
-git clone <YOUR_REPOSITORY_URL>
-cd mikrotik-manager
-
-# Oppure scarica e estrai il codice sorgente
-# se hai ricevuto un archivio ZIP
-```
-
-### 2. Installazione Dipendenze
-```bash
-# Installa le dipendenze npm
 npm install
-
-# Verifica che non ci siano vulnerabilità
-npm audit
-```
-
-### 3. Configurazione Ambiente
-
-Crea il file di configurazione ambiente:
-```bash
-# Copia il template di configurazione
-cp .env.example .env
-
-# Modifica le variabili di ambiente
-nano .env
-```
-
-Esempio di configurazione `.env`:
-```env
-# App Configuration
-VITE_APP_NAME="MikroTik Manager"
-VITE_APP_VERSION="1.0.0"
-
-# API Configuration
-VITE_API_BASE_URL="http://localhost:3001"
-
-# Security
-VITE_SESSION_TIMEOUT=28800  # 8 ore in secondi
-VITE_MAX_LOGIN_ATTEMPTS=3
-
-# Features
-VITE_ENABLE_BACKUP=true
-VITE_ENABLE_NOTIFICATIONS=true
-VITE_ENABLE_2FA=false
-```
-
-### 4. Build per Produzione
-```bash
-# Genera la build ottimizzata
-npm run build
-
-# La cartella dist/ conterrà i file statici
-ls -la dist/
-```
-
-### 5. Deploy con Server Web
-
-#### Opzione A: Serve con Node.js
-```bash
-# Installa serve globalmente
-sudo npm install -g serve
-
-# Avvia l'applicazione sulla porta 3000
-serve -s dist -l 3000
-
-# Con PM2 per auto-restart
-pm2 start "serve -s dist -l 3000" --name mikrotik-manager
-pm2 save
-pm2 startup
-```
-
-#### Opzione B: Nginx (Raccomandato)
-```bash
-# Copia i file nella directory web
-sudo cp -r dist/* /var/www/html/mikrotik-manager/
-
-# Configura Nginx
-sudo nano /etc/nginx/sites-available/mikrotik-manager
-```
-
-Configurazione Nginx:
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;  # Sostituisci con il tuo dominio
-    root /var/www/html/mikrotik-manager;
-    index index.html;
-
-    # Gestione delle Single Page Application
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Cache per asset statici
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # Compressione GZIP
-    gzip on;
-    gzip_vary on;
-    gzip_types
-        text/plain
-        text/css
-        text/xml
-        text/javascript
-        application/javascript
-        application/xml+rss
-        application/json;
-}
-```
-
-Attiva la configurazione:
-```bash
-# Abilita il sito
-sudo ln -s /etc/nginx/sites-available/mikrotik-manager /etc/nginx/sites-enabled/
-
-# Testa la configurazione
-sudo nginx -t
-
-# Riavvia Nginx
-sudo systemctl restart nginx
-sudo systemctl enable nginx
-```
-
-### 6. SSL/HTTPS con Let's Encrypt (Raccomandato)
-```bash
-# Installa Certbot
-sudo apt install certbot python3-certbot-nginx -y
-
-# Ottieni certificato SSL
-sudo certbot --nginx -d your-domain.com
-
-# Auto-renewal
-sudo crontab -e
-# Aggiungi: 0 12 * * * /usr/bin/certbot renew --quiet
-```
-
-## 🔧 Configurazione Backend (Opzionale)
-
-Per funzionalità avanzate, puoi integrare un backend Node.js:
-
-### 1. Crea il Backend
-```bash
-mkdir mikrotik-backend
-cd mikrotik-backend
-npm init -y
-
-# Installa dipendenze backend
-npm install express cors dotenv
-npm install ssh2 node-routeros-api
-npm install bcryptjs jsonwebtoken
-npm install --save-dev nodemon
-```
-
-### 2. Backend di Base
-```javascript
-// server.js
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
-
-const app = express();
-const PORT = process.env.PORT || 3001;
-
-app.use(cors());
-app.use(express.json());
-
-// Routes di esempio
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
-```
-
-### 3. Avvia il Backend
-```bash
-# Sviluppo
 npm run dev
-
-# Produzione con PM2
-pm2 start server.js --name mikrotik-backend
 ```
 
-## 🔒 Sicurezza in Produzione
+## Architecture
 
-### 1. Firewall Configuration
+### Backend (Node.js API Server)
+- **Express.js** REST API
+- **node-routeros** for MikroTik API communication
+- **ssh2** for SSH connections
+- **CORS** enabled for frontend communication
+
+### Frontend (React/Vite)
+- **React 18** with TypeScript
+- **Tailwind CSS** for styling
+- **shadcn/ui** component library
+- **Lucide React** icons
+
+## API Endpoints
+
+### Router Management
+- `POST /api/routers/connect` - Connect to router
+- `POST /api/routers/:id/disconnect` - Disconnect router
+
+### Address Lists
+- `GET /api/routers/:id/address-lists` - Get all address lists
+- `POST /api/routers/:id/address-lists/:listName/addresses` - Add address
+- `DELETE /api/routers/:id/address-lists/:listName/addresses/:address` - Remove address
+
+### Backup Management
+- `POST /api/routers/:id/backup` - Create backup
+
+### Command Execution
+- `POST /api/routers/:id/command` - Execute command
+
+## Configuration
+
+### Router Connection
+Each router requires:
+- **Name**: Display name
+- **IP Address**: Router IP or hostname
+- **Username**: RouterOS user with appropriate permissions
+- **Password**: RouterOS user password
+
+### Required RouterOS Permissions
+For full functionality, the RouterOS user needs permissions for:
+- `read`, `write` for address lists
+- `read`, `write` for backup creation
+- `read` for system information
+- SSH access (if API fails)
+
+## RouterOS Compatibility
+
+### Version Support
+- **RouterOS 6.x**: Full support via API and SSH
+- **RouterOS 7.x**: Full support via API and SSH
+- **Automatic Detection**: Version detection for optimal compatibility
+
+### API vs SSH
+- **API (Port 8728)**: Preferred method, faster and more reliable
+- **SSH (Port 22)**: Fallback method, works when API is disabled
+- **Automatic Fallback**: Tries API first, falls back to SSH if needed
+
+## Security Considerations
+
+### Network Security
+- Change default API port if exposed to internet
+- Use strong passwords for RouterOS users
+- Consider VPN access for remote management
+- Firewall rules to restrict access
+
+### Application Security
+- Credentials stored temporarily in memory only
+- No persistent credential storage
+- HTTPS recommended for production deployment
+- Regular security updates
+
+## Development
+
+### Project Structure
+```
+├── src/                    # Frontend React application
+│   ├── components/         # React components
+│   ├── services/          # API service layer
+│   └── pages/             # Application pages
+├── server/                # Backend Node.js API
+│   ├── mikrotik-api.js    # Main API server
+│   ├── package.json       # Backend dependencies
+│   └── install.sh         # Ubuntu installation script
+└── README.md
+```
+
+### Adding New Features
+1. Backend: Add new endpoints in `mikrotik-api.js`
+2. Frontend: Add service methods in `mikrotikApi.ts`
+3. UI: Create/update React components
+4. Test with real MikroTik routers
+
+## Troubleshooting
+
+### Connection Issues
+- Verify router IP and credentials
+- Check if API service is enabled: `/ip service print`
+- Ensure firewall allows connections to ports 8728 (API) and 22 (SSH)
+- Test manual connection: `telnet router_ip 8728`
+
+### Common RouterOS Commands
 ```bash
-# Abilita UFW
-sudo ufw enable
+# Enable API service
+/ip service enable api
 
-# Consenti solo porte necessarie
-sudo ufw allow 22    # SSH
-sudo ufw allow 80    # HTTP
-sudo ufw allow 443   # HTTPS
+# Check current services
+/ip service print
 
-# Blocca tutto il resto
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
+# Create API user
+/user add name=api password=yourpassword group=full
+
+# Check firewall rules
+/ip firewall filter print
 ```
 
-### 2. Nginx Security Headers
-Aggiungi al blocco server in Nginx:
-```nginx
-# Security headers
-add_header X-Frame-Options "SAMEORIGIN" always;
-add_header X-XSS-Protection "1; mode=block" always;
-add_header X-Content-Type-Options "nosniff" always;
-add_header Referrer-Policy "no-referrer-when-downgrade" always;
-add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
-```
-
-### 3. Backup e Monitoring
+### Service Management
 ```bash
-# Script di backup automatico
-nano /opt/mikrotik-backup.sh
+# Check server status
+sudo systemctl status mikrotik-manager
+
+# View server logs
+sudo journalctl -u mikrotik-manager -f
+
+# Restart server
+sudo systemctl restart mikrotik-manager
 ```
 
-```bash
-#!/bin/bash
-# Backup script per MikroTik Manager
-DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/var/backups/mikrotik-manager"
+## Contributing
 
-mkdir -p $BACKUP_DIR
+1. Fork the repository
+2. Create a feature branch
+3. Test with real MikroTik routers
+4. Submit a pull request
 
-# Backup configurazioni
-tar -czf $BACKUP_DIR/config_$DATE.tar.gz /var/www/html/mikrotik-manager/
+## License
 
-# Mantieni solo gli ultimi 30 backup
-find $BACKUP_DIR -name "config_*.tar.gz" -mtime +30 -delete
+MIT License - see LICENSE file for details
 
-echo "Backup completato: $DATE"
-```
+## Support
 
-```bash
-# Rendi eseguibile
-sudo chmod +x /opt/mikrotik-backup.sh
-
-# Aggiungi a crontab
-sudo crontab -e
-# Aggiungi: 0 2 * * * /opt/mikrotik-backup.sh
-```
-
-## 📚 Utilizzo dell'Applicazione
-
-### 1. Primo Accesso
-1. Naviga su `http://your-domain.com`
-2. La dashboard mostra lo stato iniziale
-3. Aggiungi il primo router da "Router Management"
-
-### 2. Aggiunta Router
-1. Vai su **Router Management**
-2. Clicca **"Add Router"**
-3. Inserisci:
-   - Nome router
-   - Indirizzo IP
-   - Credenziali SSH/API
-   - Porte (default: SSH 22, API 8728)
-4. Testa la connessione
-
-### 3. Gestione Address List
-1. Vai su **Address Lists**
-2. Crea nuove liste o sincronizza esistenti
-3. Import/Export in formato testo
-4. Sincronizza su tutti i router
-
-### 4. Backup Management
-1. Configura lo **scheduler automatico**
-2. Esegui **backup manuali** quando necessario
-3. Scarica file di backup dalla cronologia
-
-### 5. Command Center
-1. Seleziona router target
-2. Scegli metodo (SSH/API)
-3. Esegui comandi RouterOS
-4. Visualizza output e cronologia
-
-## 🐛 Troubleshooting
-
-### Problemi Comuni
-
-#### 1. Errore "Permission Denied" su Ubuntu
-```bash
-# Controlla permessi directory
-sudo chown -R www-data:www-data /var/www/html/mikrotik-manager
-sudo chmod -R 755 /var/www/html/mikrotik-manager
-```
-
-#### 2. Nginx "502 Bad Gateway"
-```bash
-# Controlla stato Nginx
-sudo systemctl status nginx
-
-# Verifica log errori
-sudo tail -f /var/log/nginx/error.log
-```
-
-#### 3. Errori di Connessione Router
-- Verifica credenziali SSH/API
-- Controlla firewall del router
-- Testa connettività di rete
-- Verifica versione RouterOS supportata
-
-#### 4. Problemi di Build
-```bash
-# Pulisci cache npm
-npm cache clean --force
-
-# Reinstalla dipendenze
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Log di Sistema
-```bash
-# Log applicazione
-tail -f /var/log/nginx/access.log
-tail -f /var/log/nginx/error.log
-
-# Log PM2 (se utilizzato)
-pm2 logs mikrotik-manager
-```
-
-## 🔄 Aggiornamenti
-
-### Aggiornamento Applicazione
-```bash
-# Backup configurazione corrente
-cp -r dist dist.backup.$(date +%Y%m%d)
-
-# Pull nuova versione
-git pull origin main
-
-# Reinstalla dipendenze
-npm install
-
-# Nuovo build
-npm run build
-
-# Deploy
-sudo cp -r dist/* /var/www/html/mikrotik-manager/
-sudo systemctl reload nginx
-```
-
-## 📄 Licenza
-
-Questo progetto è ispirato ai seguenti progetti open source:
-- [MikroTik-AddressList-Manager](https://github.com/uom42/MIkrotik-AddressList-Manager)
-- [RouterFleet](https://github.com/eduardogsilva/routerfleet)
-
-## 🤝 Contributi
-
-Per contribuire al progetto:
-1. Fai fork del repository
-2. Crea un branch feature
-3. Implementa le modifiche
-4. Aggiungi test se necessario
-5. Invia una pull request
-
-## 📞 Supporto
-
-Per supporto tecnico o segnalazione bug:
-- Crea una issue nel repository
-- Controlla la documentazione
-- Verifica i log di sistema
-
----
-
-**MikroTik Manager** - Gestione professionale centralizzata per la tua infrastruttura di rete MikroTik.
+For issues and questions:
+1. Check troubleshooting section
+2. Review RouterOS documentation
+3. Open GitHub issue with:
+   - RouterOS version
+   - Error messages
+   - Network configuration

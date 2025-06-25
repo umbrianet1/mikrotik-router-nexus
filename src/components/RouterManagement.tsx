@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Edit, Trash2, RefreshCw, Router as RouterIcon, Settings } from "lucide-react";
+import { Plus, Edit, Trash2, RefreshCw, Router as RouterIcon, Settings, Wifi, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { mikrotikApi, RouterConnection } from "@/services/mikrotikApi";
 
 interface Router {
   id: number;
@@ -16,6 +17,10 @@ interface Router {
   status: string;
   version: string;
   lastBackup: string;
+  username?: string;
+  password?: string;
+  identity?: string;
+  method?: 'api' | 'ssh';
 }
 
 interface RouterManagementProps {
@@ -31,10 +36,11 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
     username: '',
     password: ''
   });
+  const [connectingRouters, setConnectingRouters] = useState<Set<number>>(new Set());
   const { toast } = useToast();
 
   const handleAddRouter = () => {
-    if (!newRouter.name || !newRouter.ip) {
+    if (!newRouter.name || !newRouter.ip || !newRouter.username || !newRouter.password) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields.",
@@ -47,6 +53,8 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
       id: Date.now(),
       name: newRouter.name,
       ip: newRouter.ip,
+      username: newRouter.username,
+      password: newRouter.password,
       status: "offline",
       version: "Unknown",
       lastBackup: "Never"
@@ -67,32 +75,107 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
     });
   };
 
-  const handleDeleteRouter = (routerId: number) => {
-    setRouters(routers.filter(r => r.id !== routerId));
-    toast({
-      title: "Router Deleted",
-      description: "Router has been removed from management.",
-    });
+  const handleDeleteRouter = async (routerId: number) => {
+    try {
+      // Disconnect if connected
+      const router = routers.find(r => r.id === routerId);
+      if (router && router.status === 'online') {
+        await mikrotikApi.disconnectRouter(routerId);
+      }
+      
+      setRouters(routers.filter(r => r.id !== routerId));
+      toast({
+        title: "Router Deleted",
+        description: "Router has been removed from management.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to disconnect router before deletion.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleRefreshRouter = (routerId: number) => {
-    toast({
-      title: "Connecting",
-      description: "Checking router status...",
-    });
+  const handleConnectRouter = async (router: Router) => {
+    if (!router.username || !router.password) {
+      toast({
+        title: "Missing Credentials",
+        description: "Username and password are required to connect.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setTimeout(() => {
-      const updatedRouters = routers.map(router => 
-        router.id === routerId 
-          ? { ...router, status: Math.random() > 0.5 ? 'online' : 'offline', version: '7.12' }
-          : router
+    setConnectingRouters(prev => new Set([...prev, router.id]));
+    
+    try {
+      const connectionData: RouterConnection = {
+        id: router.id,
+        host: router.ip,
+        username: router.username,
+        password: router.password
+      };
+
+      const result = await mikrotikApi.connectRouter(connectionData);
+      
+      const updatedRouters = routers.map(r => 
+        r.id === router.id 
+          ? { 
+              ...r, 
+              status: 'online', 
+              version: result.version,
+              identity: result.identity,
+              method: result.method
+            }
+          : r
       );
       setRouters(updatedRouters);
+
       toast({
-        title: "Status Updated",
-        description: "Router status has been refreshed.",
+        title: "Connection Successful",
+        description: `Connected to ${router.name} via ${result.method.toUpperCase()}`,
       });
-    }, 1500);
+    } catch (error) {
+      const updatedRouters = routers.map(r => 
+        r.id === router.id ? { ...r, status: 'offline' } : r
+      );
+      setRouters(updatedRouters);
+
+      toast({
+        title: "Connection Failed",
+        description: error instanceof Error ? error.message : "Failed to connect to router",
+        variant: "destructive",
+      });
+    } finally {
+      setConnectingRouters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(router.id);
+        return newSet;
+      });
+    }
+  };
+
+  const handleDisconnectRouter = async (router: Router) => {
+    try {
+      await mikrotikApi.disconnectRouter(router.id);
+      
+      const updatedRouters = routers.map(r => 
+        r.id === router.id ? { ...r, status: 'offline' } : r
+      );
+      setRouters(updatedRouters);
+
+      toast({
+        title: "Disconnected",
+        description: `Disconnected from ${router.name}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Disconnect Failed",
+        description: error instanceof Error ? error.message : "Failed to disconnect",
+        variant: "destructive",
+      });
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -103,12 +186,14 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
     }
   };
 
+  const isConnecting = (routerId: number) => connectingRouters.has(routerId);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-white">Router Management</h2>
-          <p className="text-slate-400">Manage your MikroTik router fleet</p>
+          <p className="text-slate-400">Manage your MikroTik router fleet with real connections</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
@@ -186,25 +271,52 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
                 <div className="flex items-center space-x-3">
                   <div className={`w-3 h-3 rounded-full ${getStatusColor(router.status)}`}></div>
                   <div>
-                    <CardTitle className="text-white">{router.name}</CardTitle>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      {router.name}
+                      {router.method && (
+                        <Badge variant="outline" className="text-xs">
+                          {router.method.toUpperCase()}
+                        </Badge>
+                      )}
+                    </CardTitle>
                     <CardDescription className="text-slate-400">
                       {router.ip} • RouterOS {router.version}
+                      {router.identity && ` • ${router.identity}`}
                     </CardDescription>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Badge variant={router.status === 'online' ? 'default' : 'destructive'}>
-                    {router.status}
+                    {isConnecting(router.id) ? 'Connecting...' : router.status}
                   </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleRefreshRouter(router.id)}
-                    className="border-slate-600"
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Test
-                  </Button>
+                  
+                  {router.status === 'offline' ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleConnectRouter(router)}
+                      disabled={isConnecting(router.id)}
+                      className="border-green-600 text-green-400 hover:bg-green-600 hover:text-white"
+                    >
+                      {isConnecting(router.id) ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wifi className="h-4 w-4 mr-2" />
+                      )}
+                      Connect
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDisconnectRouter(router)}
+                      className="border-orange-600 text-orange-400 hover:bg-orange-600 hover:text-white"
+                    >
+                      <WifiOff className="h-4 w-4 mr-2" />
+                      Disconnect
+                    </Button>
+                  )}
+
                   <Button
                     variant="outline"
                     size="sm"
@@ -227,7 +339,12 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <p className="text-sm text-slate-400">Status</p>
-                  <p className="text-white capitalize">{router.status}</p>
+                  <p className="text-white capitalize flex items-center gap-2">
+                    {router.status}
+                    {router.status === 'online' && router.method && (
+                      <span className="text-xs text-slate-400">via {router.method.toUpperCase()}</span>
+                    )}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-400">Version</p>
