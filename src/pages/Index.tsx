@@ -15,18 +15,29 @@ import SystemSettings from "@/components/SystemSettings";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("overview");
-  const [routers, setRouters] = useState([
-    { id: 1, name: "Main Gateway", ip: "192.168.1.1", status: "online", version: "7.12", lastBackup: "2024-06-25 10:30" },
-    { id: 2, name: "Branch Office", ip: "192.168.2.1", status: "online", version: "7.11", lastBackup: "2024-06-25 09:15" },
-    { id: 3, name: "Remote Site", ip: "10.0.0.1", status: "offline", version: "7.10", lastBackup: "2024-06-24 22:00" }
-  ]);
+  // Inizializziamo con un array vuoto invece di router mock
+  const [routers, setRouters] = useState([]);
+  
+  // Calcoliamo le statistiche dinamicamente dai router reali
   const [stats, setStats] = useState({
-    totalRouters: 3,
-    onlineRouters: 2,
-    totalAddressLists: 147,
-    lastSyncTime: "2024-06-25 10:45:32"
+    totalRouters: 0,
+    onlineRouters: 0,
+    totalAddressLists: 0,
+    lastSyncTime: new Date().toLocaleString()
   });
+  
   const { toast } = useToast();
+
+  // Aggiorniamo le statistiche ogni volta che i router cambiano
+  useEffect(() => {
+    const onlineCount = routers.filter(router => router.status === 'online').length;
+    setStats({
+      totalRouters: routers.length,
+      onlineRouters: onlineCount,
+      totalAddressLists: 0, // Sarà aggiornato quando caricheremo le address list reali
+      lastSyncTime: new Date().toLocaleString()
+    });
+  }, [routers]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -41,7 +52,7 @@ const Index = () => {
       title: "Refreshing Status",
       description: "Updating router status and address lists...",
     });
-    // Simulate refresh
+    // Qui in futuro potremo implementare il refresh reale
     setTimeout(() => {
       toast({
         title: "Refresh Complete",
@@ -131,10 +142,10 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-white">
-                    {Math.round((stats.onlineRouters / stats.totalRouters) * 100)}%
+                    {stats.totalRouters > 0 ? Math.round((stats.onlineRouters / stats.totalRouters) * 100) : 0}%
                   </div>
                   <Progress 
-                    value={(stats.onlineRouters / stats.totalRouters) * 100} 
+                    value={stats.totalRouters > 0 ? (stats.onlineRouters / stats.totalRouters) * 100 : 0} 
                     className="mt-2 h-2"
                   />
                 </CardContent>
@@ -163,39 +174,59 @@ const Index = () => {
               </Card>
             </div>
 
-            {/* Router Status Overview */}
-            <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white">Router Status Overview</CardTitle>
-                <CardDescription className="text-slate-400">
-                  Real-time status of all managed MikroTik routers
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {routers.map((router) => (
-                    <div key={router.id} className="flex items-center justify-between p-4 rounded-lg bg-slate-700/50 border border-slate-600">
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-3 h-3 rounded-full ${getStatusColor(router.status)}`}></div>
-                        <div>
-                          <h3 className="text-white font-medium">{router.name}</h3>
-                          <p className="text-sm text-slate-400">{router.ip} • RouterOS {router.version}</p>
+            {/* Router Status Overview o messaggio di benvenuto */}
+            {routers.length > 0 ? (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader>
+                  <CardTitle className="text-white">Router Status Overview</CardTitle>
+                  <CardDescription className="text-slate-400">
+                    Real-time status of all managed MikroTik routers
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {routers.map((router) => (
+                      <div key={router.id} className="flex items-center justify-between p-4 rounded-lg bg-slate-700/50 border border-slate-600">
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-3 h-3 rounded-full ${getStatusColor(router.status)}`}></div>
+                          <div>
+                            <h3 className="text-white font-medium">{router.name}</h3>
+                            <p className="text-sm text-slate-400">{router.ip} • RouterOS {router.version}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <Badge variant={router.status === 'online' ? 'default' : 'destructive'}>
+                            {router.status}
+                          </Badge>
+                          <div className="text-right">
+                            <p className="text-sm text-slate-300">Last backup</p>
+                            <p className="text-xs text-slate-400">{router.lastBackup}</p>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-4">
-                        <Badge variant={router.status === 'online' ? 'default' : 'destructive'}>
-                          {router.status}
-                        </Badge>
-                        <div className="text-right">
-                          <p className="text-sm text-slate-300">Last backup</p>
-                          <p className="text-xs text-slate-400">{router.lastBackup}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardContent className="p-8 text-center">
+                  <Router className="h-16 w-16 text-slate-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-medium text-white mb-2">Welcome to MikroTik Manager</h3>
+                  <p className="text-slate-400 mb-4 max-w-md mx-auto">
+                    Start by adding your first MikroTik router to begin managing your network infrastructure. 
+                    You can connect to real RouterOS devices and manage them remotely.
+                  </p>
+                  <Button 
+                    onClick={() => setActiveTab("routers")} 
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Your First Router
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="routers">
