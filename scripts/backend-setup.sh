@@ -9,7 +9,7 @@ source "$(dirname "$0")/utils.sh"
 
 setup_backend() {
     print_status "Setting up backend server..."
-    cd server
+    cd "$(dirname "$0")/../server"
 
     # Install backend dependencies
     print_status "Installing backend dependencies..."
