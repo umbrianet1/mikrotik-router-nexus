@@ -82,11 +82,12 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
     });
 
     setTimeout(() => {
-      setRouters((prev: Router[]) => prev.map(router => 
+      const updatedRouters = routers.map(router => 
         router.id === routerId 
           ? { ...router, status: Math.random() > 0.5 ? 'online' : 'offline', version: '7.12' }
           : router
-      ));
+      );
+      setRouters(updatedRouters);
       toast({
         title: "Status Updated",
         description: "Router status has been refreshed.",
