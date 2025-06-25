@@ -34,37 +34,37 @@ test_services() {
 
 show_status() {
     echo ""
-    echo "📊 Service Status:"
-    echo "   Backend:  Running (PID: $(cat backend.pid 2>/dev/null || echo 'N/A')) - Direct Node.js"
+    echo "📊 Service status:"
+    echo "   backend:  Running (pid: $(cat backend.pid 2>/dev/null || echo 'n/a')) - Direct Node.js"
     pm2 status
 
     echo ""
-    echo "🌐 Access URLs:"
-    echo "   Frontend: http://localhost:8080"
-    echo "   Backend:  http://localhost:3001"
+    echo "🌐 Access urls:"
+    echo "   frontend: http://localhost:8080"
+    echo "   backend:  http://localhost:3001"
     echo ""
-    echo "🔧 Management Commands:"
-    echo "   Backend logs:  tail -f backend.log"
-    echo "   Stop backend:  kill \$(cat backend.pid)"
-    echo "   Frontend logs: pm2 logs mikrotik-frontend"
-    echo "   Frontend ctrl: pm2 restart/stop mikrotik-frontend"
+    echo "🔧 Management commands:"
+    echo "   backend logs:  tail -f backend.log"
+    echo "   stop backend:  kill \$(cat backend.pid)"
+    echo "   frontend logs: pm2 logs mikrotik-frontend"
+    echo "   frontend ctrl: pm2 restart/stop mikrotik-frontend"
     echo ""
 }
 
 show_final_info() {
     echo ""
-    print_success "Setup completed! You can now access MikroTik Manager at http://localhost:8080"
+    print_success "Setup completed! You can now access mikrotik manager at http://localhost:8080"
     echo ""
-    print_status "📋 Process Information:"
-    echo "   Backend PID file: backend.pid"
-    echo "   Backend log file: backend.log"
-    echo "   Frontend managed by PM2"
+    print_status "📋 Process information:"
+    echo "   backend pid file: backend.pid"
+    echo "   backend log file: backend.log"
+    echo "   frontend managed by pm2"
     echo ""
     print_status "🔧 Troubleshooting:"
-    echo "   Backend logs: tail -f backend.log"
-    echo "   Kill backend: kill \$(cat backend.pid) 2>/dev/null || true"
-    echo "   Restart frontend: pm2 restart mikrotik-frontend"
-    echo "   Re-run setup: ./start.sh"
+    echo "   backend logs: tail -f backend.log"
+    echo "   kill backend: kill \$(cat backend.pid) 2>/dev/null || true"
+    echo "   restart frontend: pm2 restart mikrotik-frontend"
+    echo "   re-run setup: ./start.sh"
 }
 
 # Run tests and show info if called directly

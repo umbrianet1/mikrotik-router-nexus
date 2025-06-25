@@ -27,12 +27,12 @@ setup_system_packages() {
     print_status "Installing build tools..."
     sudo apt-get install -y build-essential python3 lsof psmisc
 
-    # Install PM2 globally if not present
+    # Install pm2 globally if not present
     if ! command -v pm2 &> /dev/null; then
-        print_status "Installing PM2 process manager..."
+        print_status "Installing pm2 process manager..."
         sudo npm install -g pm2
     else
-        print_success "PM2 already installed"
+        print_success "pm2 already installed"
     fi
 
     # Install serve globally for frontend hosting

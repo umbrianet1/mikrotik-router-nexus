@@ -26,12 +26,12 @@ start_frontend() {
     print_status "Starting frontend server..."
     cd "$(dirname "$0")"
 
-    # Stop any existing frontend PM2 process
+    # Stop any existing frontend pm2 process
     pm2 stop mikrotik-frontend 2>/dev/null || true
     pm2 delete mikrotik-frontend 2>/dev/null || true
 
-    # Start frontend with PM2
-    print_status "Starting frontend server with PM2..."
+    # Start frontend with pm2
+    print_status "Starting frontend server with pm2..."
     pm2 start serve --name mikrotik-frontend -- -s dist -l 8080
 
     # Wait for frontend to start
@@ -63,9 +63,9 @@ start_frontend() {
         exit 1
     fi
 
-    # Save PM2 configuration (only for frontend)
+    # Save pm2 configuration (only for frontend)
     pm2 save
-    pm2 startup | grep -E '^sudo' | sh 2>/dev/null || print_warning "PM2 startup configuration may need manual setup"
+    pm2 startup | grep -E '^sudo' | sh 2>/dev/null || print_warning "pm2 startup configuration may need manual setup"
 }
 
 # Run setup and start if called directly

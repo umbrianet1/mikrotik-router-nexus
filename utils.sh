@@ -13,19 +13,19 @@ NC='\033[0m' # No Color
 
 # Function to print colored output
 print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${BLUE}[info]${NC} $1"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[success]${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[warning]${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[error]${NC} $1"
 }
 
 # Kill any processes using our ports (more aggressive approach)
@@ -60,9 +60,9 @@ check_root() {
     fi
 }
 
-# Complete PM2 cleanup
+# Complete pm2 cleanup
 cleanup_pm2() {
-    print_status "Complete PM2 cleanup..."
+    print_status "Complete pm2 cleanup..."
     pm2 stop all 2>/dev/null || true
     pm2 delete all 2>/dev/null || true
     pm2 kill 2>/dev/null || true
