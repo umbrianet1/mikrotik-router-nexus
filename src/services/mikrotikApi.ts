@@ -26,108 +26,203 @@ export interface RouterStatus {
 
 class MikroTikApiService {
   async connectRouter(router: RouterConnection): Promise<RouterStatus> {
-    const response = await fetch(`${API_BASE}/routers/connect`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(router),
-    });
+    try {
+      console.log('Attempting to connect to router:', router.host);
+      
+      const response = await fetch(`${API_BASE}/routers/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(router),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Connection failed');
+      console.log('Connection response status:', response.status);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Connection failed:', error);
+        throw new Error(error.error || 'Connection failed');
+      }
+
+      const result = await response.json();
+      console.log('Connection successful:', result);
+      return result;
+    } catch (error) {
+      console.error('Network error during connection:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   async getAddressLists(routerId: number): Promise<AddressList> {
-    const response = await fetch(`${API_BASE}/routers/${routerId}/address-lists`);
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to get address lists');
-    }
+    try {
+      console.log('Fetching address lists for router:', routerId);
+      
+      const response = await fetch(`${API_BASE}/routers/${routerId}/address-lists`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to get address lists:', error);
+        throw new Error(error.error || 'Failed to get address lists');
+      }
 
-    return response.json();
+      const result = await response.json();
+      console.log('Address lists retrieved:', result);
+      return result;
+    } catch (error) {
+      console.error('Network error getting address lists:', error);
+      throw error;
+    }
   }
 
   async addAddressToList(routerId: number, listName: string, address: string, comment: string = ''): Promise<{success: boolean}> {
-    const response = await fetch(`${API_BASE}/routers/${routerId}/address-lists/${listName}/addresses`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ address, comment }),
-    });
+    try {
+      console.log('Adding address to list:', { routerId, listName, address, comment });
+      
+      const response = await fetch(`${API_BASE}/routers/${routerId}/address-lists/${listName}/addresses`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ address, comment }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to add address');
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to add address:', error);
+        throw new Error(error.error || 'Failed to add address');
+      }
+
+      const result = await response.json();
+      console.log('Address added successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Network error adding address:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   async removeAddressFromList(routerId: number, listName: string, address: string): Promise<{success: boolean}> {
-    const response = await fetch(`${API_BASE}/routers/${routerId}/address-lists/${listName}/addresses/${encodeURIComponent(address)}`, {
-      method: 'DELETE',
-    });
+    try {
+      console.log('Removing address from list:', { routerId, listName, address });
+      
+      const response = await fetch(`${API_BASE}/routers/${routerId}/address-lists/${listName}/addresses/${encodeURIComponent(address)}`, {
+        method: 'DELETE',
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to remove address');
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to remove address:', error);
+        throw new Error(error.error || 'Failed to remove address');
+      }
+
+      const result = await response.json();
+      console.log('Address removed successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Network error removing address:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   async createBackup(routerId: number, backupName: string): Promise<{success: boolean; filename: string; size: string}> {
-    const response = await fetch(`${API_BASE}/routers/${routerId}/backup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: backupName }),
-    });
+    try {
+      console.log('Creating backup:', { routerId, backupName });
+      
+      const response = await fetch(`${API_BASE}/routers/${routerId}/backup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: backupName }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create backup');
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to create backup:', error);
+        throw new Error(error.error || 'Failed to create backup');
+      }
+
+      const result = await response.json();
+      console.log('Backup created successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Network error creating backup:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   async executeCommand(routerId: number, command: string): Promise<{success: boolean; output: string}> {
-    const response = await fetch(`${API_BASE}/routers/${routerId}/command`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ command }),
-    });
+    try {
+      console.log('Executing command:', { routerId, command });
+      
+      const response = await fetch(`${API_BASE}/routers/${routerId}/command`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ command }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to execute command');
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to execute command:', error);
+        throw new Error(error.error || 'Failed to execute command');
+      }
+
+      const result = await response.json();
+      console.log('Command executed successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Network error executing command:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   async disconnectRouter(routerId: number): Promise<{success: boolean}> {
-    const response = await fetch(`${API_BASE}/routers/${routerId}/disconnect`, {
-      method: 'POST',
-    });
+    try {
+      console.log('Disconnecting router:', routerId);
+      
+      const response = await fetch(`${API_BASE}/routers/${routerId}/disconnect`, {
+        method: 'POST',
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to disconnect');
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to disconnect:', error);
+        throw new Error(error.error || 'Failed to disconnect');
+      }
+
+      const result = await response.json();
+      console.log('Disconnected successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Network error disconnecting:', error);
+      throw error;
     }
+  }
 
-    return response.json();
+  // Test backend connectivity
+  async testBackendConnection(): Promise<boolean> {
+    try {
+      console.log('Testing backend connection...');
+      
+      const response = await fetch(`${API_BASE.replace('/api', '')}`, {
+        method: 'GET',
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Backend is available:', result);
+        return true;
+      } else {
+        console.error('Backend returned error:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error('Backend is not reachable:', error);
+      return false;
+    }
   }
 }
 
