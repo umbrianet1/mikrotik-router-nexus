@@ -20,14 +20,13 @@ export interface RouterStatus {
   version: string;
   identity: string;
   uptime?: string;
-  method: 'api' | 'ssh';
+  method: 'rest' | 'api' | 'ssh';
 }
 
 class MikroTikApiService {
   async connectRouter(router: RouterConnection): Promise<RouterStatus> {
     try {
-      console.log('Attempting to connect to router:', router.host);
-      console.log('Using credentials:', { username: router.username, hasPassword: !!router.password });
+      console.log('🔌 Connecting to router:', router.host);
       
       const response = await fetch(`${API_BASE}/routers/connect`, {
         method: 'POST',
@@ -37,19 +36,16 @@ class MikroTikApiService {
         body: JSON.stringify(router),
       });
 
-      console.log('Connection response status:', response.status);
-      
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        console.error('Connection failed with status:', response.status, error);
         throw new Error(error.error || `Connection failed with status ${response.status}`);
       }
 
       const result = await response.json();
-      console.log('Connection successful:', result);
+      console.log(`✅ Connected via ${result.method.toUpperCase()}:`, result);
       return result;
     } catch (error) {
-      console.error('Network error during connection:', error);
+      console.error('❌ Connection failed:', error);
       if (error instanceof TypeError && error.message.includes('fetch')) {
         throw new Error('Unable to reach backend server. Please ensure the backend is running on port 3001.');
       }
@@ -205,15 +201,13 @@ class MikroTikApiService {
     }
   }
 
-  // Test backend connectivity with simplified approach
   async testBackendConnection(): Promise<boolean> {
     try {
-      console.log('🔍 Testing backend connection to: http://localhost:3001');
+      console.log('🔍 Testing backend connection...');
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      // Test the root endpoint directly
       const response = await fetch('http://localhost:3001', {
         method: 'GET',
         signal: controller.signal,
@@ -223,22 +217,20 @@ class MikroTikApiService {
       });
 
       clearTimeout(timeoutId);
-      console.log('✅ Backend response received:', response.status);
-
+      
       if (response.ok) {
         const result = await response.json();
-        console.log('Backend data:', result);
         
-        // Verify it's our MikroTik API server
         const isCorrectServer = result && 
                                result.name === 'MikroTik Manager API Server' && 
                                result.status === 'running';
         
         if (isCorrectServer) {
-          console.log('✅ MikroTik Manager API Server confirmed');
+          console.log('✅ Backend connection confirmed');
+          console.log('🔄 Available connection methods:', result.connectionMethods);
           return true;
         } else {
-          console.error('❌ Wrong server or server not ready:', result);
+          console.error('❌ Wrong server or server not ready');
           return false;
         }
       } else {

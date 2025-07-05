@@ -5,7 +5,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Prova a caricare le dipendenze opzionali
+// Try to load optional dependencies
 let RouterOSAPI, Client;
 try {
   const routeros = require('node-routeros');
@@ -26,44 +26,64 @@ class MikroTikManager {
     this.connections = new Map();
   }
 
-  // Detect RouterOS version for compatibility
-  async detectOSVersion(host, username, password) {
-    if (!RouterOSAPI) {
-      throw new Error('RouterOS API not available - install node-routeros package');
-    }
-    
+  // Try REST API first (RouterOS 7.1+)
+  async connectREST(routerId, host, username, password) {
     try {
-      const api = new RouterOSAPI({
-        host,
-        user: username,
-        password,
-        port: 8728,
-        timeout: 5000
-      });
-
-      await api.connect();
-      const system = await api.write('/system/resource/print');
-      await api.disconnect();
+      console.log(`Attempting REST connection to ${host}...`);
       
-      const version = system[0].version;
-      return {
-        version,
-        isV7: version.startsWith('7.'),
-        isV6: version.startsWith('6.')
-      };
+      const auth = Buffer.from(`${username}:${password}`).toString('base64');
+      const restUrl = `http://${host}/rest/system/resource`;
+      
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(restUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeout);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('REST connection successful');
+        
+        // Store REST connection info
+        this.connections.set(routerId, { 
+          type: 'rest', 
+          host, 
+          auth,
+          connection: { host, auth }
+        });
+        
+        return {
+          connected: true,
+          version: data.version || 'Unknown',
+          identity: data['board-name'] || 'RouterOS',
+          method: 'rest'
+        };
+      } else {
+        throw new Error(`REST API returned ${response.status}`);
+      }
     } catch (error) {
-      console.error('Error detecting OS version:', error.message);
+      console.log(`REST connection failed: ${error.message}`);
       throw error;
     }
   }
 
-  // Connect via API (preferred method)
+  // API connection (node-routeros)
   async connectAPI(routerId, host, username, password) {
     if (!RouterOSAPI) {
-      throw new Error('RouterOS API not available - install node-routeros package');
+      throw new Error('RouterOS API not available');
     }
     
     try {
+      console.log(`Attempting API connection to ${host}...`);
+      
       const api = new RouterOSAPI({
         host,
         user: username,
@@ -73,45 +93,56 @@ class MikroTikManager {
       });
 
       await api.connect();
-      this.connections.set(routerId, { type: 'api', connection: api, host });
       
-      // Get system info to confirm connection
+      // Get system info
       const system = await api.write('/system/resource/print');
       const identity = await api.write('/system/identity/print');
       
+      this.connections.set(routerId, { 
+        type: 'api', 
+        connection: api, 
+        host 
+      });
+      
+      console.log('API connection successful');
+      
       return {
         connected: true,
-        version: system[0].version,
-        identity: identity[0].name,
-        uptime: system[0].uptime,
+        version: system[0]?.version || 'Unknown',
+        identity: identity[0]?.name || 'RouterOS',
         method: 'api'
       };
     } catch (error) {
-      console.error('API connection failed:', error.message);
+      console.log(`API connection failed: ${error.message}`);
       throw error;
     }
   }
 
-  // Connect via SSH (fallback method)
+  // SSH connection (fallback)
   async connectSSH(routerId, host, username, password) {
     if (!Client) {
-      throw new Error('SSH client not available - install ssh2 package');
+      throw new Error('SSH client not available');
     }
     
     return new Promise((resolve, reject) => {
-      const conn = new Client();
+      console.log(`Attempting SSH connection to ${host}...`);
       
-      // Timeout per connessione
+      const conn = new Client();
       const connectionTimeout = setTimeout(() => {
         conn.end();
-        reject(new Error(`SSH connection timeout to ${host}`));
+        reject(new Error(`SSH connection timeout`));
       }, 15000);
       
       conn.on('ready', async () => {
         clearTimeout(connectionTimeout);
-        this.connections.set(routerId, { type: 'ssh', connection: conn, host });
+        console.log('SSH connection successful');
         
-        // Get system info via SSH
+        this.connections.set(routerId, { 
+          type: 'ssh', 
+          connection: conn, 
+          host 
+        });
+        
         try {
           const sysInfo = await this.executeSSHCommand(conn, '/system resource print');
           const identity = await this.executeSSHCommand(conn, '/system identity print');
@@ -123,74 +154,81 @@ class MikroTikManager {
             method: 'ssh'
           });
         } catch (error) {
-          clearTimeout(connectionTimeout);
           reject(error);
         }
       });
 
       conn.on('error', (err) => {
         clearTimeout(connectionTimeout);
-        console.error(`SSH connection error to ${host}:`, err.message);
         reject(new Error(`SSH connection failed: ${err.message}`));
       });
 
-      conn.on('close', () => {
-        clearTimeout(connectionTimeout);
-      });
-
-      // Configurazione SSH ottimizzata per RouterOS
-      const sshConfig = {
+      conn.connect({
         host,
         username,
         password,
         port: 22,
         readyTimeout: 12000,
-        keepaliveInterval: 30000,
-        keepaliveCountMax: 3,
-        // Algoritmi supportati da RouterOS (incluse versioni più vecchie)
         algorithms: {
-          kex: [
-            'diffie-hellman-group14-sha256',
-            'diffie-hellman-group14-sha1',
-            'diffie-hellman-group1-sha1',
-            'ecdh-sha2-nistp256',
-            'ecdh-sha2-nistp384'
-          ],
-          cipher: [
-            'aes128-ctr',
-            'aes192-ctr', 
-            'aes256-ctr',
-            'aes128-cbc',
-            'aes192-cbc',
-            'aes256-cbc',
-            '3des-cbc'
-          ],
-          hmac: [
-            'hmac-sha2-256',
-            'hmac-sha2-512',
-            'hmac-sha1',
-            'hmac-md5'
-          ],
-          compress: ['none']
-        },
-        // Per RouterOS con autenticazione keyboard-interactive
-        tryKeyboard: true,
-        // Debug per troubleshooting (rimuovere in produzione)
-        debug: process.env.NODE_ENV === 'development' ? (info) => {
-          console.log('SSH Debug:', info);
-        } : undefined
-      };
-
-      try {
-        conn.connect(sshConfig);
-      } catch (error) {
-        clearTimeout(connectionTimeout);
-        reject(new Error(`SSH connection setup failed: ${error.message}`));
-      }
+          kex: ['diffie-hellman-group14-sha256', 'diffie-hellman-group14-sha1'],
+          cipher: ['aes128-ctr', 'aes256-ctr', 'aes128-cbc'],
+          hmac: ['hmac-sha2-256', 'hmac-sha1']
+        }
+      });
     });
   }
 
-  // Execute SSH command with improved error handling
+  // Main connection method with fallback
+  async connect(routerId, host, username, password) {
+    const methods = ['REST', 'API', 'SSH'];
+    let lastError;
+    
+    for (const method of methods) {
+      try {
+        console.log(`Trying ${method} connection...`);
+        
+        switch (method) {
+          case 'REST':
+            return await this.connectREST(routerId, host, username, password);
+          case 'API':
+            return await this.connectAPI(routerId, host, username, password);
+          case 'SSH':
+            return await this.connectSSH(routerId, host, username, password);
+        }
+      } catch (error) {
+        console.log(`${method} failed: ${error.message}`);
+        lastError = error;
+        continue;
+      }
+    }
+    
+    throw new Error(`All connection methods failed. Last error: ${lastError.message}`);
+  }
+
+  // Execute REST request
+  async executeREST(host, auth, endpoint, method = 'GET', data = null) {
+    const url = `http://${host}/rest${endpoint}`;
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    if (data && method !== 'GET') {
+      options.body = JSON.stringify(data);
+    }
+    
+    const response = await fetch(url, options);
+    if (response.ok) {
+      return await response.json();
+    } else {
+      throw new Error(`REST request failed: ${response.status}`);
+    }
+  }
+
+  // Execute SSH command
   executeSSHCommand(conn, command, timeout = 10000) {
     return new Promise((resolve, reject) => {
       const commandTimeout = setTimeout(() => {
@@ -200,57 +238,49 @@ class MikroTikManager {
       conn.exec(command, (err, stream) => {
         if (err) {
           clearTimeout(commandTimeout);
-          reject(new Error(`SSH exec failed: ${err.message}`));
+          reject(err);
           return;
         }
         
         let output = '';
-        let errorOutput = '';
         
-        stream.on('close', (code, signal) => {
+        stream.on('close', (code) => {
           clearTimeout(commandTimeout);
-          
           if (code === 0) {
             resolve(output);
           } else {
-            const errorMsg = errorOutput || `Command failed with exit code ${code}`;
-            reject(new Error(`Command failed: ${errorMsg}`));
+            reject(new Error(`Command failed with code ${code}`));
           }
         });
         
         stream.on('data', (data) => {
           output += data.toString();
         });
-        
-        stream.stderr.on('data', (data) => {
-          errorOutput += data.toString();
-          console.error('SSH Command Error:', data.toString());
-        });
-
-        // Timeout per singolo comando
-        stream.setTimeout(timeout, () => {
-          clearTimeout(commandTimeout);
-          reject(new Error(`Command execution timeout: ${command}`));
-        });
       });
     });
   }
 
-  // Get address lists (compatible with v6 and v7)
+  // Get address lists with method detection
   async getAddressLists(routerId) {
     const conn = this.connections.get(routerId);
     if (!conn) throw new Error('Router not connected');
 
     try {
-      if (conn.type === 'api') {
-        const lists = await conn.connection.write('/ip/firewall/address-list/print');
-        return this.formatAddressLists(lists);
-      } else {
-        const output = await this.executeSSHCommand(
-          conn.connection, 
-          '/ip firewall address-list print'
-        );
-        return this.parseAddressListsFromSSH(output);
+      switch (conn.type) {
+        case 'rest':
+          const lists = await this.executeREST(conn.host, conn.auth, '/ip/firewall/address-list');
+          return this.formatAddressLists(lists);
+          
+        case 'api':
+          const apiLists = await conn.connection.write('/ip/firewall/address-list/print');
+          return this.formatAddressLists(apiLists);
+          
+        case 'ssh':
+          const output = await this.executeSSHCommand(conn.connection, '/ip firewall address-list print');
+          return this.parseAddressListsFromSSH(output);
+          
+        default:
+          throw new Error('Unknown connection type');
       }
     } catch (error) {
       console.error('Error getting address lists:', error.message);
@@ -258,24 +288,37 @@ class MikroTikManager {
     }
   }
 
-  // Add address to list
+  // Add address with method detection
   async addAddressToList(routerId, listName, address, comment = '') {
     const conn = this.connections.get(routerId);
     if (!conn) throw new Error('Router not connected');
 
     try {
-      if (conn.type === 'api') {
-        await conn.connection.write('/ip/firewall/address-list/add', {
-          list: listName,
-          address: address,
-          comment: comment
-        });
-      } else {
-        await this.executeSSHCommand(
-          conn.connection,
-          `/ip firewall address-list add list=${listName} address=${address} comment="${comment}"`
-        );
+      switch (conn.type) {
+        case 'rest':
+          await this.executeREST(conn.host, conn.auth, '/ip/firewall/address-list', 'POST', {
+            list: listName,
+            address: address,
+            comment: comment
+          });
+          break;
+          
+        case 'api':
+          await conn.connection.write('/ip/firewall/address-list/add', {
+            list: listName,
+            address: address,
+            comment: comment
+          });
+          break;
+          
+        case 'ssh':
+          await this.executeSSHCommand(
+            conn.connection,
+            `/ip firewall address-list add list=${listName} address=${address} comment="${comment}"`
+          );
+          break;
       }
+      
       return { success: true };
     } catch (error) {
       console.error('Error adding address:', error.message);
@@ -283,29 +326,41 @@ class MikroTikManager {
     }
   }
 
-  // Remove address from list
+  // Remove address with method detection
   async removeAddressFromList(routerId, listName, address) {
     const conn = this.connections.get(routerId);
     if (!conn) throw new Error('Router not connected');
 
     try {
-      if (conn.type === 'api') {
-        const items = await conn.connection.write('/ip/firewall/address-list/print', {
-          '?list': listName,
-          '?address': address
-        });
-        
-        if (items.length > 0) {
-          await conn.connection.write('/ip/firewall/address-list/remove', {
-            '.id': items[0]['.id']
+      switch (conn.type) {
+        case 'rest':
+          // Find the item first
+          const items = await this.executeREST(conn.host, conn.auth, `/ip/firewall/address-list?list=${listName}&address=${address}`);
+          if (items.length > 0) {
+            await this.executeREST(conn.host, conn.auth, `/ip/firewall/address-list/${items[0]['.id']}`, 'DELETE');
+          }
+          break;
+          
+        case 'api':
+          const apiItems = await conn.connection.write('/ip/firewall/address-list/print', {
+            '?list': listName,
+            '?address': address
           });
-        }
-      } else {
-        await this.executeSSHCommand(
-          conn.connection,
-          `/ip firewall address-list remove [find list=${listName} address=${address}]`
-        );
+          if (apiItems.length > 0) {
+            await conn.connection.write('/ip/firewall/address-list/remove', {
+              '.id': apiItems[0]['.id']
+            });
+          }
+          break;
+          
+        case 'ssh':
+          await this.executeSSHCommand(
+            conn.connection,
+            `/ip firewall address-list remove [find list=${listName} address=${address}]`
+          );
+          break;
       }
+      
       return { success: true };
     } catch (error) {
       console.error('Error removing address:', error.message);
@@ -313,61 +368,26 @@ class MikroTikManager {
     }
   }
 
-  // Create backup with improved SSH handling
+  // Create backup with method detection
   async createBackup(routerId, backupName) {
     const conn = this.connections.get(routerId);
     if (!conn) throw new Error('Router not connected');
 
     try {
-      if (conn.type === 'api') {
-        await conn.connection.write('/system/backup/save', {
-          name: backupName
-        });
-        
-        // Wait a moment for backup to complete
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Get backup file
-        const files = await conn.connection.write('/file/print', {
-          '?name': `${backupName}.backup`
-        });
-        
-        return {
-          success: true,
-          filename: `${backupName}.backup`,
-          size: files[0]?.size || 'Unknown'
-        };
-      } else {
-        // SSH backup con timeout esteso
-        await this.executeSSHCommand(
-          conn.connection,
-          `/system backup save name=${backupName}`,
-          20000 // 20 secondi per il backup
-        );
-        
-        // Verifica che il backup sia stato creato
-        try {
-          const fileList = await this.executeSSHCommand(
-            conn.connection,
-            `/file print where name~"${backupName}.backup"`
-          );
+      switch (conn.type) {
+        case 'rest':
+          await this.executeREST(conn.host, conn.auth, '/system/backup', 'POST', { name: backupName });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return { success: true, filename: `${backupName}.backup`, size: 'Unknown' };
           
-          const sizeMatch = fileList.match(/size=(\d+)/);
-          const size = sizeMatch ? `${Math.round(parseInt(sizeMatch[1]) / 1024)} KB` : 'Unknown';
+        case 'api':
+          await conn.connection.write('/system/backup/save', { name: backupName });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return { success: true, filename: `${backupName}.backup`, size: 'Unknown' };
           
-          return {
-            success: true,
-            filename: `${backupName}.backup`,
-            size: size
-          };
-        } catch (verifyError) {
-          console.warn('Could not verify backup size:', verifyError.message);
-          return {
-            success: true,
-            filename: `${backupName}.backup`,
-            size: 'Unknown'
-          };
-        }
+        case 'ssh':
+          await this.executeSSHCommand(conn.connection, `/system backup save name=${backupName}`, 20000);
+          return { success: true, filename: `${backupName}.backup`, size: 'Unknown' };
       }
     } catch (error) {
       console.error('Error creating backup:', error.message);
@@ -375,36 +395,27 @@ class MikroTikManager {
     }
   }
 
-  // Execute custom command with improved error handling
+  // Execute command with method detection
   async executeCommand(routerId, command) {
     const conn = this.connections.get(routerId);
     if (!conn) throw new Error('Router not connected');
 
     try {
-      if (conn.type === 'api') {
-        const result = await conn.connection.write(command);
-        return {
-          success: true,
-          output: JSON.stringify(result, null, 2)
-        };
-      } else {
-        // Determina il timeout basato sul comando
-        const isLongRunningCommand = command.includes('backup') || 
-                                   command.includes('upgrade') || 
-                                   command.includes('export');
-        const timeout = isLongRunningCommand ? 60000 : 15000;
-        
-        const output = await this.executeSSHCommand(conn.connection, command, timeout);
-        return {
-          success: true,
-          output: output
-        };
+      switch (conn.type) {
+        case 'rest':
+          // REST commands need to be mapped to endpoints
+          return { success: false, output: 'Custom commands not supported via REST API' };
+          
+        case 'api':
+          const result = await conn.connection.write(command);
+          return { success: true, output: JSON.stringify(result, null, 2) };
+          
+        case 'ssh':
+          const output = await this.executeSSHCommand(conn.connection, command, 15000);
+          return { success: true, output: output };
       }
     } catch (error) {
-      return {
-        success: false,
-        output: `Error: ${error.message}`
-      };
+      return { success: false, output: `Error: ${error.message}` };
     }
   }
 
@@ -462,9 +473,10 @@ class MikroTikManager {
       try {
         if (conn.type === 'api') {
           conn.connection.disconnect();
-        } else {
+        } else if (conn.type === 'ssh') {
           conn.connection.end();
         }
+        // REST connections don't need explicit disconnection
       } catch (error) {
         console.warn(`Error disconnecting ${routerId}:`, error.message);
       } finally {
@@ -476,7 +488,7 @@ class MikroTikManager {
 
 const mikrotikManager = new MikroTikManager();
 
-// Route di base
+// Routes
 app.get('/', (req, res) => {
   res.json({
     name: 'MikroTik Manager API Server',
@@ -491,6 +503,7 @@ app.get('/', (req, res) => {
       command: 'POST /api/routers/:id/command',
       disconnect: 'POST /api/routers/:id/disconnect'
     },
+    connectionMethods: ['REST (RouterOS 7.1+)', 'API (node-routeros)', 'SSH'],
     dependencies: {
       'node-routeros': RouterOSAPI ? 'available' : 'missing',
       'ssh2': Client ? 'available' : 'missing'
@@ -502,18 +515,14 @@ app.get('/', (req, res) => {
 app.post('/api/routers/connect', async (req, res) => {
   try {
     const { id, host, username, password } = req.body;
+    console.log(`Connection request for router ${id} at ${host}`);
     
-    // Try API first, fallback to SSH
-    let result;
-    try {
-      result = await mikrotikManager.connectAPI(id, host, username, password);
-    } catch (apiError) {
-      console.log('API failed, trying SSH...', apiError.message);
-      result = await mikrotikManager.connectSSH(id, host, username, password);
-    }
+    const result = await mikrotikManager.connect(id, host, username, password);
+    console.log(`Connection successful via ${result.method}`);
     
     res.json(result);
   } catch (error) {
+    console.error('Connection failed:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -583,7 +592,6 @@ app.post('/api/routers/:id/disconnect', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
-// Function to find an available port
 const findAvailablePort = (startPort) => {
   return new Promise((resolve) => {
     const server = require('net').createServer();
@@ -599,7 +607,6 @@ const findAvailablePort = (startPort) => {
   });
 };
 
-// Start server with port fallback
 const startServer = async () => {
   try {
     const availablePort = await findAvailablePort(PORT);
@@ -610,15 +617,8 @@ const startServer = async () => {
     
     app.listen(availablePort, () => {
       console.log(`MikroTik Manager API Server running on port ${availablePort}`);
+      console.log(`Connection methods: REST -> API -> SSH (fallback)`);
       console.log(`Server available at: http://localhost:${availablePort}`);
-      if (!RouterOSAPI) {
-        console.warn('WARNING: node-routeros package not found. API connections will fail.');
-        console.warn('Run: npm install node-routeros');
-      }
-      if (!Client) {
-        console.warn('WARNING: ssh2 package not found. SSH connections will fail.');
-        console.warn('Run: npm install ssh2');
-      }
     });
     
   } catch (error) {
@@ -627,18 +627,16 @@ const startServer = async () => {
   }
 };
 
-// Graceful shutdown handling
 process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down gracefully...');
+  console.log('Shutting down gracefully...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log('Received SIGINT, shutting down gracefully...');
+  console.log('Shutting down gracefully...');
   process.exit(0);
 });
 
-// Start the server
 startServer();
 
 module.exports = { MikroTikManager };
