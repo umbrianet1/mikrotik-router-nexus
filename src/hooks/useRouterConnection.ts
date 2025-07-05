@@ -21,10 +21,18 @@ export const useRouterConnection = (routers: Router[], setRouters: (routers: Rou
     setConnectingRouters(prev => new Set([...prev, router.id]));
     
     try {
+      console.log('🔄 Starting connection process for router:', router.name);
+      
+      // Test backend connection with detailed logging
+      console.log('🔍 Testing backend connectivity...');
       const backendConnected = await mikrotikApi.testBackendConnection();
+      
       if (!backendConnected) {
-        throw new Error('Backend API server is not reachable. Please ensure the backend is running on port 3001.');
+        console.error('❌ Backend connectivity test failed');
+        throw new Error('Backend API server is not reachable. Please ensure the backend is running on port 3001 and CORS is properly configured.');
       }
+      
+      console.log('✅ Backend connectivity confirmed');
 
       const connectionData: RouterConnection = {
         id: router.id,
@@ -33,7 +41,7 @@ export const useRouterConnection = (routers: Router[], setRouters: (routers: Rou
         password: router.password
       };
 
-      console.log('Attempting connection with:', { host: router.ip, username: router.username });
+      console.log('🔌 Attempting router connection with:', { host: router.ip, username: router.username });
       const result = await mikrotikApi.connectRouter(connectionData);
       
       const updatedRouters = routers.map(r => 
@@ -53,6 +61,8 @@ export const useRouterConnection = (routers: Router[], setRouters: (routers: Rou
         title: "Connection Successful",
         description: `Connected to ${router.name} via ${result.method.toUpperCase()}`,
       });
+      
+      console.log('✅ Router connection successful:', result);
     } catch (error) {
       const updatedRouters = routers.map(r => 
         r.id === router.id ? { ...r, status: 'offline' } : r
@@ -60,7 +70,8 @@ export const useRouterConnection = (routers: Router[], setRouters: (routers: Rou
       setRouters(updatedRouters);
 
       const errorMessage = error instanceof Error ? error.message : "Failed to connect to router";
-      console.error('Connection failed:', errorMessage);
+      console.error('❌ Connection failed:', errorMessage);
+      console.error('Full error details:', error);
       
       toast({
         title: "Connection Failed",
