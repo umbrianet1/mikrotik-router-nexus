@@ -28,6 +28,7 @@ class MikroTikApiService {
   async connectRouter(router: RouterConnection): Promise<RouterStatus> {
     try {
       console.log('Attempting to connect to router:', router.host);
+      console.log('Using credentials:', { username: router.username, hasPassword: !!router.password });
       
       const response = await fetch(`${API_BASE}/routers/connect`, {
         method: 'POST',
@@ -40,9 +41,9 @@ class MikroTikApiService {
       console.log('Connection response status:', response.status);
       
       if (!response.ok) {
-        const error = await response.json();
-        console.error('Connection failed:', error);
-        throw new Error(error.error || 'Connection failed');
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        console.error('Connection failed with status:', response.status, error);
+        throw new Error(error.error || `Connection failed with status ${response.status}`);
       }
 
       const result = await response.json();
@@ -50,6 +51,9 @@ class MikroTikApiService {
       return result;
     } catch (error) {
       console.error('Network error during connection:', error);
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Unable to reach backend server. Please ensure the backend is running on port 3001.');
+      }
       throw error;
     }
   }
@@ -61,7 +65,7 @@ class MikroTikApiService {
       const response = await fetch(`${API_BASE}/routers/${routerId}/address-lists`);
       
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         console.error('Failed to get address lists:', error);
         throw new Error(error.error || 'Failed to get address lists');
       }
@@ -88,7 +92,7 @@ class MikroTikApiService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         console.error('Failed to add address:', error);
         throw new Error(error.error || 'Failed to add address');
       }
@@ -111,7 +115,7 @@ class MikroTikApiService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         console.error('Failed to remove address:', error);
         throw new Error(error.error || 'Failed to remove address');
       }
@@ -138,7 +142,7 @@ class MikroTikApiService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         console.error('Failed to create backup:', error);
         throw new Error(error.error || 'Failed to create backup');
       }
@@ -165,7 +169,7 @@ class MikroTikApiService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         console.error('Failed to execute command:', error);
         throw new Error(error.error || 'Failed to execute command');
       }
@@ -188,7 +192,7 @@ class MikroTikApiService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         console.error('Failed to disconnect:', error);
         throw new Error(error.error || 'Failed to disconnect');
       }
@@ -202,25 +206,37 @@ class MikroTikApiService {
     }
   }
 
-  // Test backend connectivity
+  // Test backend connectivity with detailed error reporting
   async testBackendConnection(): Promise<boolean> {
     try {
-      console.log('Testing backend connection...');
+      console.log('Testing backend connection to:', API_BASE.replace('/api', ''));
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
       const response = await fetch(`${API_BASE.replace('/api', '')}`, {
         method: 'GET',
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const result = await response.json();
         console.log('Backend is available:', result);
         return true;
       } else {
-        console.error('Backend returned error:', response.status);
+        console.error('Backend returned error:', response.status, response.statusText);
         return false;
       }
     } catch (error) {
-      console.error('Backend is not reachable:', error);
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.error('Backend connection timeout after 5 seconds');
+        } else {
+          console.error('Backend connection error:', error.message);
+        }
+      }
       return false;
     }
   }

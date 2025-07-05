@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,8 @@ interface RouterManagementProps {
 
 const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingRouter, setEditingRouter] = useState<Router | null>(null);
   const [newRouter, setNewRouter] = useState({
     name: '',
     ip: '',
@@ -74,6 +77,34 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
     });
   };
 
+  const handleEditRouter = () => {
+    if (!editingRouter || !editingRouter.name || !editingRouter.ip || !editingRouter.username || !editingRouter.password) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const updatedRouters = routers.map(r => 
+      r.id === editingRouter.id ? { ...editingRouter } : r
+    );
+    setRouters(updatedRouters);
+    setIsEditDialogOpen(false);
+    setEditingRouter(null);
+
+    toast({
+      title: "Router Updated",
+      description: `${editingRouter.name} has been updated successfully.`,
+    });
+  };
+
+  const openEditDialog = (router: Router) => {
+    setEditingRouter({ ...router });
+    setIsEditDialogOpen(true);
+  };
+
   const handleDeleteRouter = async (routerId: number) => {
     try {
       const router = routers.find(r => r.id === routerId);
@@ -117,6 +148,12 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
     setConnectingRouters(prev => new Set([...prev, router.id]));
     
     try {
+      // Prima controlliamo la connettività del backend
+      const backendConnected = await mikrotikApi.testBackendConnection();
+      if (!backendConnected) {
+        throw new Error('Backend API server is not reachable. Please ensure the backend is running on port 3001.');
+      }
+
       const connectionData: RouterConnection = {
         id: router.id,
         host: router.ip,
@@ -124,6 +161,7 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
         password: router.password
       };
 
+      console.log('Attempting connection with:', { host: router.ip, username: router.username });
       const result = await mikrotikApi.connectRouter(connectionData);
       
       const updatedRouters = routers.map(r => 
@@ -149,9 +187,12 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
       );
       setRouters(updatedRouters);
 
+      const errorMessage = error instanceof Error ? error.message : "Failed to connect to router";
+      console.error('Connection failed:', errorMessage);
+      
       toast({
         title: "Connection Failed",
-        description: error instanceof Error ? error.message : "Failed to connect to router",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -270,6 +311,67 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
         </Dialog>
       </div>
 
+      {/* Edit Router Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="text-white">Edit Router</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Update router configuration details.
+            </DialogDescription>
+          </DialogHeader>
+          {editingRouter && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-name" className="text-right text-slate-200">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editingRouter.name}
+                  onChange={(e) => setEditingRouter({...editingRouter, name: e.target.value})}
+                  className="col-span-3 bg-slate-700 border-slate-600 text-white"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-ip" className="text-right text-slate-200">IP Address</Label>
+                <Input
+                  id="edit-ip"
+                  value={editingRouter.ip}
+                  onChange={(e) => setEditingRouter({...editingRouter, ip: e.target.value})}
+                  className="col-span-3 bg-slate-700 border-slate-600 text-white"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-username" className="text-right text-slate-200">Username</Label>
+                <Input
+                  id="edit-username"
+                  value={editingRouter.username || ''}
+                  onChange={(e) => setEditingRouter({...editingRouter, username: e.target.value})}
+                  className="col-span-3 bg-slate-700 border-slate-600 text-white"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-password" className="text-right text-slate-200">Password</Label>
+                <Input
+                  id="edit-password"
+                  type="password"
+                  value={editingRouter.password || ''}
+                  onChange={(e) => setEditingRouter({...editingRouter, password: e.target.value})}
+                  className="col-span-3 bg-slate-700 border-slate-600 text-white"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="border-slate-600">
+              Cancel
+            </Button>
+            <Button onClick={handleEditRouter} className="bg-blue-600 hover:bg-blue-700">
+              Update Router
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid gap-6">
         {routers.map((router) => (
           <Card key={router.id} className="bg-slate-800/50 border-slate-700">
@@ -327,6 +429,7 @@ const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => openEditDialog(router)}
                     className="border-slate-600"
                   >
                     <Settings className="h-4 w-4" />
