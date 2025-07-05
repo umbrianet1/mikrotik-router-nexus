@@ -7,7 +7,7 @@ import EditRouterDialog from "./router/EditRouterDialog";
 import RouterCard from "./router/RouterCard";
 import EmptyRouterState from "./router/EmptyRouterState";
 
-const RouterManagement = ({ routers, setRouters ): RouterManagementProps) => {
+const RouterManagement = ({ routers, setRouters }: RouterManagementProps) => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingRouter, setEditingRouter] = useState<Router | null>(null);
