@@ -9,7 +9,7 @@ export interface Router {
   username?: string;
   password?: string;
   identity?: string;
-  method?: 'api' | 'ssh';
+  method?: 'rest' | 'api' | 'ssh';
 }
 
 export interface RouterManagementProps {
