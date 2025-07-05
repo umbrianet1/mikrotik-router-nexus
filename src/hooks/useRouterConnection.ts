@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { mikrotikApi, RouterConnection } from "@/services/mikrotikApi";
@@ -23,13 +22,13 @@ export const useRouterConnection = (routers: Router[], setRouters: (routers: Rou
     try {
       console.log('🔄 Starting connection process for router:', router.name);
       
-      // Test backend connection with detailed logging
+      // Test backend connection first
       console.log('🔍 Testing backend connectivity...');
       const backendConnected = await mikrotikApi.testBackendConnection();
       
       if (!backendConnected) {
         console.error('❌ Backend connectivity test failed');
-        throw new Error('Backend API server is not reachable. Please ensure the backend is running on port 3001 and CORS is properly configured.');
+        throw new Error('Backend server is not responding. Please check if the server is running on port 3001.');
       }
       
       console.log('✅ Backend connectivity confirmed');
@@ -41,7 +40,7 @@ export const useRouterConnection = (routers: Router[], setRouters: (routers: Rou
         password: router.password
       };
 
-      console.log('🔌 Attempting router connection with:', { host: router.ip, username: router.username });
+      console.log('🔌 Attempting router connection...');
       const result = await mikrotikApi.connectRouter(connectionData);
       
       const updatedRouters = routers.map(r => 
@@ -71,7 +70,6 @@ export const useRouterConnection = (routers: Router[], setRouters: (routers: Rou
 
       const errorMessage = error instanceof Error ? error.message : "Failed to connect to router";
       console.error('❌ Connection failed:', errorMessage);
-      console.error('Full error details:', error);
       
       toast({
         title: "Connection Failed",

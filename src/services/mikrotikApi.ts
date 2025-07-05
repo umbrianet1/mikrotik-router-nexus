@@ -1,4 +1,3 @@
-
 const API_BASE = 'http://localhost:3001/api';
 
 export interface RouterConnection {
@@ -206,58 +205,53 @@ class MikroTikApiService {
     }
   }
 
-  // Test backend connectivity with improved error handling and CORS support
+  // Test backend connectivity with simplified approach
   async testBackendConnection(): Promise<boolean> {
     try {
-      console.log('Testing backend connection to:', `http://localhost:3001`);
+      console.log('🔍 Testing backend connection to: http://localhost:3001');
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased timeout to 10 seconds
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      // Test the root endpoint which returns server info
-      const response = await fetch(`http://localhost:3001`, {
+      // Test the root endpoint directly
+      const response = await fetch('http://localhost:3001', {
         method: 'GET',
         signal: controller.signal,
-        mode: 'cors', // Explicitly set CORS mode
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
         },
       });
 
       clearTimeout(timeoutId);
-      console.log('Backend response status:', response.status);
-      console.log('Backend response headers:', Object.fromEntries(response.headers.entries()));
+      console.log('✅ Backend response received:', response.status);
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Backend response data:', result);
+        console.log('Backend data:', result);
         
-        // Check if it's actually our MikroTik Manager API server
-        if (result && result.name === 'MikroTik Manager API Server' && result.status === 'running') {
-          console.log('✅ MikroTik Manager API Server confirmed running');
-          console.log('Dependencies status:', result.dependencies);
+        // Verify it's our MikroTik API server
+        const isCorrectServer = result && 
+                               result.name === 'MikroTik Manager API Server' && 
+                               result.status === 'running';
+        
+        if (isCorrectServer) {
+          console.log('✅ MikroTik Manager API Server confirmed');
           return true;
         } else {
-          console.error('❌ Unexpected server response - not MikroTik Manager API:', result);
+          console.error('❌ Wrong server or server not ready:', result);
           return false;
         }
       } else {
-        console.error('❌ Backend returned error:', response.status, response.statusText);
-        const errorText = await response.text().catch(() => 'Unable to read error response');
-        console.error('Error response body:', errorText);
+        console.error('❌ Backend returned error status:', response.status);
         return false;
       }
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          console.error('❌ Backend connection timeout after 10 seconds');
-        } else if (error.message.includes('fetch')) {
-          console.error('❌ Network fetch error:', error.message);
+          console.error('❌ Backend connection timeout (5s)');
         } else {
-          console.error('❌ Backend connection error:', error.message);
+          console.error('❌ Backend connection failed:', error.message);
         }
-        console.error('Error details:', error);
       }
       return false;
     }
