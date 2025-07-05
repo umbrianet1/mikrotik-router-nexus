@@ -1,4 +1,3 @@
-
 const API_BASE = 'http://localhost:3001/api';
 
 export interface RouterConnection {
@@ -206,15 +205,16 @@ class MikroTikApiService {
     }
   }
 
-  // Test backend connectivity with detailed error reporting
+  // Test backend connectivity with proper API endpoint check
   async testBackendConnection(): Promise<boolean> {
     try {
-      console.log('Testing backend connection to:', API_BASE.replace('/api', ''));
+      console.log('Testing backend connection to:', `http://localhost:3001`);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
-      const response = await fetch(`${API_BASE.replace('/api', '')}`, {
+      // Test the root endpoint which returns server info
+      const response = await fetch(`http://localhost:3001`, {
         method: 'GET',
         signal: controller.signal,
       });
@@ -224,7 +224,15 @@ class MikroTikApiService {
       if (response.ok) {
         const result = await response.json();
         console.log('Backend is available:', result);
-        return true;
+        
+        // Check if it's actually our MikroTik Manager API server
+        if (result.name === 'MikroTik Manager API Server' && result.status === 'running') {
+          console.log('MikroTik Manager API Server confirmed running');
+          return true;
+        } else {
+          console.error('Unexpected server response - not MikroTik Manager API');
+          return false;
+        }
       } else {
         console.error('Backend returned error:', response.status, response.statusText);
         return false;
